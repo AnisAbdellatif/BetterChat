@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>BetterChat admin</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background: #0b0e0f;
+    color: #efeff1;
+    margin: 0;
+    font-size: 13px;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 20px;
+    border-bottom: 1px solid #22282d;
+  }
+  header h1 { font-size: 16px; margin: 0; }
+  header h1 span { color: #53fc18; }
+  #meta { color: #adadb8; font-size: 12px; }
+  #error {
+    margin: 12px 20px 0;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: rgba(255, 107, 107, 0.12);
+    border: 1px solid rgba(255, 107, 107, 0.5);
+    color: #ff9b9b;
+  }
+  #error[hidden] { display: none; }
+  main { padding: 16px 20px 32px; max-width: 1200px; margin: 0 auto; }
+  .tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .tile {
+    background: #15191c;
+    border: 1px solid #22282d;
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .tile .k { color: #adadb8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .tile .v { font-size: 24px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .tile .s { color: #7d8085; font-size: 11px; margin-top: 2px; }
+  .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
+  @media (max-width: 800px) { .charts { grid-template-columns: 1fr; } }
+  .card {
+    background: #15191c;
+    border: 1px solid #22282d;
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .card h2 { font-size: 13px; margin: 0 0 8px; color: #d3d3d8; font-weight: 600; }
+  .card h2 small { color: #7d8085; font-weight: 400; margin-left: 6px; }
+  svg { width: 100%; height: 180px; display: block; }
+  .axis { stroke: #2a3035; stroke-width: 1; }
+  .grid { stroke: #1d2327; stroke-width: 1; }
+  .line { fill: none; stroke: #53fc18; stroke-width: 2; stroke-linejoin: round; }
+  .area { fill: rgba(83, 252, 24, 0.12); }
+  .line2 { fill: none; stroke: #3ea6ff; stroke-width: 1.5; stroke-dasharray: 3 3; }
+  .bar { fill: #c85cff; }
+  .bar:hover { fill: #e39bff; }
+  .lbl { fill: #7d8085; font-size: 10px; }
+  .legend { display: flex; gap: 14px; color: #adadb8; font-size: 11px; margin-top: 6px; }
+  .legend i { display: inline-block; width: 10px; height: 3px; vertical-align: middle; margin-right: 5px; border-radius: 2px; }
+  .empty { color: #7d8085; font-style: italic; padding: 40px 0; text-align: center; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid #22282d; white-space: nowrap; }
+  th { color: #adadb8; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td a { color: #53fc18; text-decoration: none; }
+  td a:hover { text-decoration: underline; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .dot.up { background: #53fc18; }
+  .dot.down { background: #4a5058; }
+  .table-wrap { overflow-x: auto; }
+</style>
+</head>
+<body>
+  <header>
+    <h1><span>BetterChat</span> admin</h1>
+    <div id="meta">loading...</div>
+  </header>
+  <div id="error" hidden></div>
+  <main>
+    <div class="tiles" id="tiles"></div>
+
+    <div class="charts">
+      <div class="card">
+        <h2>Viewers over the last 24h <small>1-minute samples</small></h2>
+        <div id="viewersChart"></div>
+        <div class="legend"><span><i style="background:#53fc18"></i>viewers</span><span><i style="background:#3ea6ff"></i>channels watched</span></div>
+      </div>
+      <div class="card">
+        <h2>Joins per hour <small>last 24h</small></h2>
+        <div id="joinsChart"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Channels <small>sorted by viewers now, then total joins</small></h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Channel</th>
+              <th class="num">Viewers now</th>
+              <th class="num">Peak</th>
+              <th class="num">Joins</th>
+              <th class="num">Watch hours</th>
+              <th class="num">Messages</th>
+              <th>Last activity</th>
+            </tr>
+          </thead>
+          <tbody id="channels"></tbody>
+        </table>
+      </div>
+      <div id="channelsEmpty" class="empty" hidden>No channel has been watched yet.</div>
+    </div>
+  </main>
+
+<script>
+(function () {
+  'use strict';
+  const REFRESH_MS = 10000;
+  const SVG = 'http://www.w3.org/2000/svg';
+  const STATS_URL = '/admin/api/stats';
+
+  const $ = (id) => document.getElementById(id);
+  const fmt = (n) => Number(n || 0).toLocaleString();
+
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  function svgEl(tag, attrs) {
+    const e = document.createElementNS(SVG, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    return e;
+  }
+
+  function duration(sec) {
+    sec = Math.max(0, Math.floor(sec));
+    const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
+    if (d) return `${d}d ${h}h`;
+    if (h) return `${h}h ${m}m`;
+    return `${m}m`;
+  }
+
+  function ago(ts, now) {
+    if (!ts) return '';
+    const s = now - ts;
+    if (s < 60) return 'just now';
+    if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+    if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+    return `${Math.floor(s / 86400)} d ago`;
+  }
+
+  function hhmm(ts) {
+    const d = new Date(ts * 1000);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+
+  function tile(label, value, sub) {
+    const t = el('div', 'tile');
+    t.appendChild(el('div', 'k', label));
+    t.appendChild(el('div', 'v', value));
+    if (sub) t.appendChild(el('div', 's', sub));
+    return t;
+  }
+
+  function renderTiles(s) {
+    $('tiles').replaceChildren(
+      tile('Viewers now', fmt(s.current.viewers), 'open chat tabs'),
+      tile('Channels watched', fmt(s.current.channels_watched), `${fmt(s.totals.channels_seen)} seen since ${new Date(s.first_started_at * 1000).toLocaleDateString()}`),
+      tile('Messages seen', fmt(s.current.messages_total), 'across all channels'),
+      tile('Total joins', fmt(s.totals.joins), 'tabs opened on a channel'),
+      tile('Watch time', `${fmt(s.totals.watch_hours)} h`, 'completed sessions'),
+      tile('Server uptime', duration(s.uptime_sec), `started ${new Date(s.started_at * 1000).toLocaleString()}`)
+    );
+  }
+
+  function renderViewers(samples) {
+    const host = $('viewersChart');
+    host.replaceChildren();
+    if (!samples || samples.length < 2) {
+      host.appendChild(el('div', 'empty', 'Not enough samples yet - the first one lands after a minute.'));
+      return;
+    }
+    const W = 600, H = 180, L = 34, R = 8, T = 8, B = 22;
+    const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: 'none' });
+    const t0 = samples[0].t, t1 = samples[samples.length - 1].t;
+    const maxY = Math.max(1, ...samples.map((p) => Math.max(p.viewers, p.channels)));
+    const x = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * (W - L - R);
+    const y = (v) => T + (1 - v / maxY) * (H - T - B);
+
+    for (let i = 0; i <= 4; i++) {
+      const v = (maxY / 4) * i;
+      svg.appendChild(svgEl('line', { x1: L, x2: W - R, y1: y(v), y2: y(v), class: i ? 'grid' : 'axis' }));
+      const lbl = svgEl('text', { x: L - 4, y: y(v) + 3, class: 'lbl', 'text-anchor': 'end' });
+      lbl.textContent = Math.round(v);
+      svg.appendChild(lbl);
+    }
+    const ticks = 6;
+    for (let i = 0; i <= ticks; i++) {
+      const t = t0 + ((t1 - t0) * i) / ticks;
+      const lbl = svgEl('text', { x: x(t), y: H - 6, class: 'lbl', 'text-anchor': i === 0 ? 'start' : i === ticks ? 'end' : 'middle' });
+      lbl.textContent = hhmm(t);
+      svg.appendChild(lbl);
+    }
+    const pts = samples.map((p) => `${x(p.t).toFixed(1)},${y(p.viewers).toFixed(1)}`);
+    svg.appendChild(svgEl('path', { class: 'area', d: `M${x(t0)},${y(0)} L${pts.join(' L')} L${x(t1)},${y(0)} Z` }));
+    svg.appendChild(svgEl('path', { class: 'line', d: `M${pts.join(' L')}` }));
+    const pts2 = samples.map((p) => `${x(p.t).toFixed(1)},${y(p.channels).toFixed(1)}`);
+    svg.appendChild(svgEl('path', { class: 'line2', d: `M${pts2.join(' L')}` }));
+    host.appendChild(svg);
+  }
+
+  function renderJoins(hourly, now) {
+    const host = $('joinsChart');
+    host.replaceChildren();
+    const byHour = new Map((hourly || []).map((h) => [h.t, h.joins]));
+    const currentHour = Math.floor(now / 3600) * 3600;
+    const buckets = [];
+    for (let i = 23; i >= 0; i--) {
+      const t = currentHour - i * 3600;
+      buckets.push({ t, joins: byHour.get(t) || 0 });
+    }
+    const W = 600, H = 180, L = 34, R = 8, T = 8, B = 22;
+    const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: 'none' });
+    const maxY = Math.max(1, ...buckets.map((b) => b.joins));
+    const y = (v) => T + (1 - v / maxY) * (H - T - B);
+    for (let i = 0; i <= 4; i++) {
+      const v = (maxY / 4) * i;
+      svg.appendChild(svgEl('line', { x1: L, x2: W - R, y1: y(v), y2: y(v), class: i ? 'grid' : 'axis' }));
+      const lbl = svgEl('text', { x: L - 4, y: y(v) + 3, class: 'lbl', 'text-anchor': 'end' });
+      lbl.textContent = Math.round(v);
+      svg.appendChild(lbl);
+    }
+    const slot = (W - L - R) / buckets.length;
+    buckets.forEach((b, i) => {
+      const bx = L + i * slot + slot * 0.15;
+      const bw = slot * 0.7;
+      const rect = svgEl('rect', { class: 'bar', x: bx, width: bw, y: y(b.joins), height: Math.max(0, y(0) - y(b.joins)) });
+      const title = svgEl('title', {});
+      title.textContent = `${hhmm(b.t)} - ${b.joins} join${b.joins === 1 ? '' : 's'}`;
+      rect.appendChild(title);
+      svg.appendChild(rect);
+      if (i % 4 === 0) {
+        const lbl = svgEl('text', { x: bx + bw / 2, y: H - 6, class: 'lbl', 'text-anchor': 'middle' });
+        lbl.textContent = hhmm(b.t);
+        svg.appendChild(lbl);
+      }
+    });
+    host.appendChild(svg);
+  }
+
+  function renderChannels(channels, now) {
+    const body = $('channels');
+    body.replaceChildren();
+    $('channelsEmpty').hidden = channels.length > 0;
+    for (const c of channels) {
+      const tr = el('tr');
+      const name = el('td');
+      name.appendChild(el('span', `dot ${c.current > 0 ? 'up' : 'down'}`));
+      const a = el('a', '', c.slug);
+      a.href = `/${encodeURIComponent(c.slug)}`;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      name.appendChild(a);
+      tr.appendChild(name);
+      tr.appendChild(el('td', 'num', fmt(c.current)));
+      tr.appendChild(el('td', 'num', fmt(c.peak)));
+      tr.appendChild(el('td', 'num', fmt(c.joins)));
+      tr.appendChild(el('td', 'num', fmt(c.watch_hours)));
+      tr.appendChild(el('td', 'num', fmt(c.messages)));
+      tr.appendChild(el('td', '', ago(c.last_seen, now)));
+      body.appendChild(tr);
+    }
+  }
+
+  async function refresh() {
+    try {
+      const res = await fetch(STATS_URL, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const s = await res.json();
+      renderTiles(s);
+      renderViewers(s.samples);
+      renderJoins(s.hourly_joins, s.now);
+      renderChannels(s.channels, s.now);
+      $('meta').textContent = `updated ${new Date().toLocaleTimeString()} - refreshes every ${REFRESH_MS / 1000}s`;
+      $('error').hidden = true;
+    } catch (e) {
+      $('error').textContent = `Could not load stats (${e.message}). Retrying...`;
+      $('error').hidden = false;
+    }
+  }
+
+  refresh();
+  setInterval(refresh, REFRESH_MS);
+})();
+</script>
+</body>
+</html>

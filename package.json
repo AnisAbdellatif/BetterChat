@@ -1,0 +1,10 @@
+{
+  "name": "betterchat",
+  "version": "0.2.0",
+  "private": true,
+  "description": "BetterChat frontend checks (the app itself is run with uv, see README)",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "check": "node --check site/app.js && node --check site/kick.js && node --check site/config.js"
+  }
+}

@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BetterChat</title>
+<style>
+  :root {
+    /* Overridden from the settings panel. */
+    --chat-font-size: 13px;
+    --chat-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    --chat-bg: #0b0e0f;
+    --chat-gap: 2px;
+  }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background: var(--chat-bg);
+    color: #efeff1;
+    margin: 0;
+    overflow: hidden;
+  }
+
+  /* Scrollbars: thin and low-contrast so they read as part of the chat. */
+  #messages, #settingsPanel { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.18) transparent; }
+  #messages::-webkit-scrollbar, #settingsPanel::-webkit-scrollbar { width: 8px; }
+  #messages::-webkit-scrollbar-track, #settingsPanel::-webkit-scrollbar-track { background: transparent; }
+  #messages::-webkit-scrollbar-thumb, #settingsPanel::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  #messages::-webkit-scrollbar-thumb:hover, #settingsPanel::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.32);
+    background-clip: padding-box;
+  }
+
+  #messages {
+    box-sizing: border-box;
+    height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 8px 12px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--chat-gap);
+    font-size: var(--chat-font-size);
+    font-family: var(--chat-font-family);
+    line-height: 1.5;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+  }
+  /* Keeps a short chat pinned to the bottom like Kick's. Deliberately NOT
+     justify-content: flex-end - content that overflows a flex-end column
+     spills above the scroll origin and can never be scrolled back to. */
+  #messages > :first-child { margin-top: auto; }
+  #messages > .msg, #messages > .event, #messages > .system, #messages > .hint { flex-shrink: 0; }
+  /* "Scroll back through history" off: the list is always pinned to the
+     newest message and can't be scrolled. */
+  body.no-scrollback #messages { overflow-y: hidden; }
+  body.has-pin #messages { padding-top: 3.2em; }
+
+  .msg { padding: 2px 4px; border-radius: 4px; transition: opacity 0.4s; }
+  .msg:hover { background: rgba(255, 255, 255, 0.04); }
+  .msg.mentions-me { background: rgba(83, 252, 24, 0.12); border-left: 3px solid #53fc18; padding-left: 6px; }
+  .msg.deleted { opacity: 0.4; }
+  .msg.deleted .content { text-decoration: line-through; }
+  .msg .deleted-tag { color: #adadb8; font-style: italic; margin-left: 0.4em; }
+  .msg .deleted-tag:not(:empty)::before { content: "("; }
+  .msg .deleted-tag:not(:empty)::after { content: ")"; }
+  .msg.fade { opacity: 0; }
+
+  .ts { color: #7d8085; font-variant-numeric: tabular-nums; margin-right: 0.5em; display: none; }
+  body.show-ts .ts { display: inline; }
+
+  .reply {
+    color: #adadb8;
+    font-size: 0.88em;
+    margin-bottom: 1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .reply .arrow { margin-right: 0.3em; }
+  .reply .user { font-weight: 600; color: #d3d3d8; }
+
+  /* Hover tooltip with the full text of a clipped "Replying to" line */
+  #replyTip {
+    position: fixed;
+    z-index: 9;
+    box-sizing: border-box;
+    max-width: min(560px, calc(100vw - 16px));
+    background: #1b2126;
+    border: 1px solid #2f3a41;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: var(--chat-font-size);
+    font-family: var(--chat-font-family);
+    line-height: 1.5;
+    color: #efeff1;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+    overflow-wrap: anywhere;
+  }
+  #replyTip[hidden] { display: none; }
+  #replyTip .tip-head { color: #adadb8; font-size: 0.85em; font-weight: 600; margin-bottom: 2px; }
+  #replyTip .emote { height: 1.5em; }
+
+  .badges { display: inline; white-space: nowrap; }
+  /* em-based so badges and emotes scale with the chosen font size. */
+  .badge {
+    display: inline-block;
+    width: 1.23em;
+    height: 1.23em;
+    vertical-align: -0.23em;
+    margin-right: 0.3em;
+  }
+  /* display:inline-block above would otherwise beat the browser's [hidden] rule. */
+  .badge[hidden] { display: none; }
+  .user { font-weight: 700; }
+  body.user-cards .msg > .user { cursor: pointer; }
+  body.user-cards .msg > .user:hover { text-decoration: underline; }
+  .sep { color: #adadb8; }
+
+  /* User card (click a username) */
+  #userCard {
+    position: fixed;
+    z-index: 8;
+    box-sizing: border-box;
+    width: min(360px, calc(100vw - 16px));
+    background: #15191c;
+    border: 1px solid #2a3035;
+    border-radius: 10px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+    font-size: 13px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    color: #efeff1;
+    overflow: hidden;
+  }
+  #userCard[hidden] { display: none; }
+  .uc-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    background: #1b2126;
+    border-bottom: 1px solid #22282d;
+  }
+  .uc-avatar {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: #2a3035;
+    flex: 0 0 auto;
+  }
+  .uc-who { flex: 1 1 auto; min-width: 0; }
+  .uc-name { font-size: 16px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .uc-name a { color: inherit; text-decoration: none; }
+  .uc-name a:hover { text-decoration: underline; }
+  .uc-followers { color: #adadb8; font-size: 12px; margin-top: 2px; }
+  .uc-flags { color: #53fc18; font-size: 11px; font-weight: 600; margin-top: 2px; }
+  #closeUserCard {
+    align-self: flex-start;
+    background: none;
+    border: none;
+    color: #adadb8;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 2px;
+  }
+  #closeUserCard:hover { color: #efeff1; }
+  .uc-facts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 12px;
+    padding: 10px 14px;
+  }
+  .uc-fact .k { color: #adadb8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .uc-fact .v { font-weight: 600; margin-top: 1px; }
+  .uc-badges { display: flex; flex-wrap: wrap; gap: 4px 0; padding: 0 14px 10px; }
+  .uc-badges .badge { width: 20px; height: 20px; vertical-align: middle; }
+  .uc-badges:empty { display: none; }
+  .uc-bio { padding: 0 14px 10px; color: #d3d3d8; font-size: 12px; }
+  .uc-bio:empty { display: none; }
+  .uc-history {
+    border-top: 1px solid #22282d;
+    max-height: 180px;
+    overflow-y: auto;
+    padding: 8px 14px 10px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  }
+  .uc-history::-webkit-scrollbar { width: 8px; }
+  .uc-history::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); border-radius: 8px; }
+  .uc-history .k { color: #adadb8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 4px; }
+  .uc-history .line { display: flex; gap: 8px; padding: 2px 0; line-height: 1.4; }
+  .uc-history .line .t { color: #7d8085; font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+  .uc-history .line .c { min-width: 0; overflow-wrap: anywhere; }
+  .uc-history .line .c .emote { height: 1.4em; margin: -2px 1px; }
+  .uc-history .none { color: #7d8085; font-style: italic; }
+  .uc-status { padding: 14px; color: #adadb8; font-style: italic; }
+  .uc-status.error { color: #ff6b6b; }
+  .mention {
+    color: #53fc18;
+    font-weight: 600;
+    background: rgba(83, 252, 24, 0.12);
+    border-radius: 4px;
+    padding: 0 0.25em;
+  }
+  .emote {
+    height: 1.7em;
+    vertical-align: middle;
+    margin: -4px 1px;
+  }
+  .system {
+    color: #adadb8;
+    font-style: italic;
+    padding: 2px 4px;
+  }
+  .system.error { color: #ff6b6b; }
+  .hint { color: #adadb8; padding: 2px 4px; }
+  .hint code { color: #53fc18; }
+
+  /* Chat events (subs, gifts, hosts, moderation) */
+  .event {
+    padding: 3px 8px;
+    border-radius: 4px;
+    border-left: 3px solid #4a5058;
+    background: rgba(255, 255, 255, 0.04);
+    color: #d3d3d8;
+    transition: opacity 0.4s;
+  }
+  .event .icon { margin-right: 0.4em; }
+  .event .user { font-weight: 700; color: #efeff1; }
+  .event.sub { border-left-color: #53fc18; background: rgba(83, 252, 24, 0.08); }
+  .event.gift { border-left-color: #c85cff; background: rgba(200, 92, 255, 0.1); }
+  .event.host { border-left-color: #3ea6ff; background: rgba(62, 166, 255, 0.1); }
+  .event.mod { border-left-color: #ff6b6b; background: rgba(255, 107, 107, 0.08); color: #adadb8; font-style: italic; }
+  .event.fade { opacity: 0; }
+
+  /* Pinned message banner */
+  #pinned {
+    position: fixed;
+    top: 6px;
+    left: 8px;
+    right: 44px;
+    z-index: 5;
+    box-sizing: border-box;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    background: #1b2126;
+    border: 1px solid #2f3a41;
+    border-left: 3px solid #53fc18;
+    font-size: var(--chat-font-size);
+    font-family: var(--chat-font-family);
+    line-height: 1.5;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  }
+  #pinned[hidden] { display: none; }
+  #pinned .pin-icon { flex: 0 0 auto; }
+  #pinned .pin-body { flex: 1 1 auto; min-width: 0; }
+  #pinned .pin-label { color: #adadb8; font-size: 0.85em; margin-right: 0.4em; }
+  #pinned .user { font-weight: 700; }
+  #closePin {
+    flex: 0 0 auto;
+    background: none;
+    border: none;
+    color: #adadb8;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 0 2px;
+  }
+  #closePin:hover { color: #efeff1; }
+
+  /* Connection / stream status pill (bottom center) */
+  #statusPill {
+    position: fixed;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 7;
+    max-width: calc(100vw - 24px);
+    box-sizing: border-box;
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: #1b2126;
+    border: 1px solid #2f3a41;
+    color: #d3d3d8;
+    font-size: 12px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #statusPill[hidden] { display: none; }
+  #statusPill::before {
+    content: "";
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 8px;
+    vertical-align: middle;
+    background: #7d8085;
+  }
+  #statusPill.warn { border-color: rgba(255, 176, 32, 0.6); }
+  #statusPill.warn::before { background: #ffb020; animation: pulse 1.2s ease-in-out infinite; }
+  #statusPill.offline::before { background: #7d8085; }
+  @keyframes pulse { 50% { opacity: 0.3; } }
+
+  /* OBS overlay mode (?overlay=1): transparent, no chrome, readable on video. */
+  body.overlay { background: transparent; }
+  body.overlay #messages { overflow-y: hidden; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 6px rgba(0, 0, 0, 0.7); }
+  body.overlay .msg:hover { background: none; }
+  body.overlay #settingsBtn { display: none; }
+  body.overlay #statusPill { display: none; }
+  body.overlay .event, body.overlay #pinned { text-shadow: none; }
+  body.overlay #pinned { right: 8px; }
+
+  /* Settings ------------------------------------------------------------ */
+  #settingsBtn {
+    position: fixed;
+    top: 6px;
+    right: 6px;
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #adadb8;
+    cursor: pointer;
+    opacity: 0.35;
+    transition: opacity 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 6;
+  }
+  #settingsBtn:hover, #settingsBtn:focus-visible { opacity: 1; color: #efeff1; }
+  #settingsBtn svg { width: 18px; height: 18px; }
+
+  #settingsOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+  /* display:flex above would otherwise beat the browser's [hidden] rule. */
+  #settingsOverlay[hidden] { display: none; }
+  #settingsPanel {
+    box-sizing: border-box;
+    width: min(480px, calc(100vw - 24px));
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+    background: #15191c;
+    border: 1px solid #2a3035;
+    border-radius: 10px;
+    padding: 16px 18px 18px;
+    font-size: 13px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  }
+  #settingsPanel h2 {
+    font-size: 15px;
+    margin: 0 0 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  #closeSettings {
+    background: none;
+    border: none;
+    color: #adadb8;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  #closeSettings:hover { color: #efeff1; background: rgba(255, 255, 255, 0.06); }
+  #urlNote {
+    background: rgba(62, 166, 255, 0.12);
+    border: 1px solid rgba(62, 166, 255, 0.4);
+    border-radius: 6px;
+    padding: 6px 10px;
+    margin-bottom: 10px;
+    color: #d3d3d8;
+    font-size: 12px;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 2px;
+    border-bottom: 1px solid #2a3035;
+    margin-bottom: 12px;
+  }
+  .tabs button {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    color: #adadb8;
+    padding: 7px 10px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .tabs button:hover { color: #efeff1; }
+  .tabs button[aria-selected="true"] { color: #53fc18; border-bottom-color: #53fc18; }
+  .tab-panel[hidden] { display: none; }
+
+  .setting {
+    border-top: 1px solid #22282d;
+    padding: 10px 0;
+  }
+  .tab-panel .setting:first-child { border-top: none; padding-top: 0; }
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    cursor: pointer;
+  }
+  .toggle-row + .toggle-row { margin-top: 8px; }
+  .toggle-row .label { font-weight: 600; }
+  .toggle-row .desc { color: #adadb8; font-size: 12px; margin-top: 2px; }
+  .switch {
+    position: relative;
+    flex: 0 0 auto;
+    width: 36px;
+    height: 20px;
+    border-radius: 10px;
+    background: #3a4148;
+    transition: background 0.15s;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform 0.15s;
+  }
+  .toggle-row input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .toggle-row input:checked + .switch { background: #53fc18; }
+  .toggle-row input:checked + .switch::after { transform: translateX(16px); }
+  .toggle-row input:focus-visible + .switch { outline: 2px solid #53fc18; outline-offset: 2px; }
+  .sub {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 6px 12px;
+    margin-top: 8px;
+    padding-left: 10px;
+    border-left: 2px solid #2a3035;
+    color: #d3d3d8;
+  }
+  .sub[hidden] { display: none; }
+  .sub .field-desc { grid-column: 1 / -1; color: #adadb8; font-size: 12px; margin-top: -2px; }
+  .sub input[type="number"], .sub input[type="text"], .sub select {
+    box-sizing: border-box;
+    width: 96px;
+    background: #0b0e0f;
+    border: 1px solid #2a3035;
+    border-radius: 5px;
+    color: #efeff1;
+    padding: 5px 8px;
+    font-size: 13px;
+  }
+  .sub select { width: 160px; cursor: pointer; }
+  .sub input[type="text"].wide { width: 160px; }
+  .sub input:focus, .sub select:focus { outline: none; border-color: #53fc18; }
+  /* Always-visible field group (no toggle above it). */
+  .sub.plain { margin-top: 0; padding-left: 0; border-left: none; }
+  .sub input:invalid { border-color: #ff6b6b; }
+  .checks {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px 12px;
+    margin-top: 8px;
+    color: #d3d3d8;
+  }
+  .checks label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+  .checks input { accent-color: #53fc18; margin: 0; }
+  .section-title { font-weight: 600; }
+  .section-desc { color: #adadb8; font-size: 12px; margin-top: 2px; }
+  .color-field { display: flex; align-items: center; gap: 6px; }
+  .color-field input[type="color"] {
+    width: 30px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid #2a3035;
+    border-radius: 5px;
+    background: #0b0e0f;
+    cursor: pointer;
+  }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .buttons button {
+    background: #22282d;
+    border: 1px solid #2f3a41;
+    border-radius: 5px;
+    color: #efeff1;
+    padding: 5px 10px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .buttons button:hover { background: #2a3238; border-color: #53fc18; }
+  .buttons button.danger:hover { border-color: #ff6b6b; }
+  #actionNote { color: #53fc18; font-size: 12px; margin-top: 6px; min-height: 1.2em; }
+  #actionNote.error { color: #ff6b6b; }
+</style>
+</head>
+<body>
+  <div id="pinned" hidden>
+    <span class="pin-icon">📌</span>
+    <div class="pin-body"><span class="pin-label">Pinned</span><span id="pinContent"></span></div>
+    <button id="closePin" type="button" aria-label="Dismiss pinned message">&times;</button>
+  </div>
+
+  <div id="messages"></div>
+
+  <div id="userCard" hidden role="dialog" aria-label="User card"></div>
+
+  <div id="statusPill" hidden role="status" aria-live="polite"></div>
+
+  <div id="replyTip" hidden role="tooltip"></div>
+
+  <button id="settingsBtn" type="button" title="Settings" aria-label="Settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"></circle>
+      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path>
+    </svg>
+  </button>
+
+  <div id="settingsOverlay" hidden>
+    <div id="settingsPanel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <h2><span id="settingsTitle">BetterChat settings</span><button id="closeSettings" type="button" aria-label="Close">&times;</button></h2>
+
+      <div id="urlNote" hidden>These settings came from the URL. Changes apply to this page only and are not saved.</div>
+
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" data-tab="appearance" aria-selected="true">Appearance</button>
+        <button type="button" role="tab" data-tab="badges">Badges</button>
+        <button type="button" role="tab" data-tab="filters">Filters</button>
+        <button type="button" role="tab" data-tab="events">Events</button>
+        <button type="button" role="tab" data-tab="share">Overlay &amp; sharing</button>
+      </div>
+
+      <!-- Appearance ------------------------------------------------- -->
+      <div class="tab-panel" data-tab-panel="appearance" role="tabpanel">
+        <div class="setting">
+          <div class="sub plain">
+            <label for="fontSize">Font size (px)</label>
+            <input id="fontSize" type="number" min="8" max="40" step="1" data-setting="fontSize" />
+            <label for="fontFamily">Font</label>
+            <select id="fontFamily" data-setting="fontFamily">
+              <option value="system">System default</option>
+              <option value="inter">Inter</option>
+              <option value="segoe">Segoe UI</option>
+              <option value="roboto">Roboto</option>
+              <option value="arial">Arial</option>
+              <option value="verdana">Verdana</option>
+              <option value="tahoma">Tahoma</option>
+              <option value="trebuchet">Trebuchet MS</option>
+              <option value="georgia">Georgia</option>
+              <option value="times">Times New Roman</option>
+              <option value="mono">Monospace</option>
+              <option value="comic">Comic Sans MS</option>
+              <option value="custom">Custom...</option>
+            </select>
+            <label for="customFont" data-when="fontFamily=custom">Custom font name</label>
+            <input id="customFont" class="wide" type="text" maxlength="60" placeholder="e.g. Fira Sans" spellcheck="false" data-setting="customFont" data-when="fontFamily=custom" />
+            <label for="messageGap">Spacing between messages (px)</label>
+            <input id="messageGap" type="number" min="0" max="40" step="1" data-setting="messageGap" />
+            <label for="bgColorHex">Background color</label>
+            <span class="color-field">
+              <input id="bgColorPicker" type="color" data-setting="bgColor" aria-label="Pick a background color" />
+              <input id="bgColorHex" type="text" data-setting="bgColor" pattern="#[0-9a-fA-F]{6}" maxlength="7" spellcheck="false" aria-label="Background hex color" />
+            </span>
+          </div>
+        </div>
+
+        <div class="setting">
+          <label class="toggle-row">
+            <span><span class="label">Single color for usernames</span>
+              <div class="desc">Ignore each user's Kick color and use one color for everyone.</div></span>
+            <input type="checkbox" data-setting="monocolor" /><span class="switch"></span>
+          </label>
+          <div class="sub" data-sub="monocolor">
+            <label for="monocolorHex">Username color</label>
+            <span class="color-field">
+              <input id="monocolorPicker" type="color" data-setting="monocolorValue" aria-label="Pick a color" />
+              <input id="monocolorHex" type="text" data-setting="monocolorValue" pattern="#[0-9a-fA-F]{6}" maxlength="7" spellcheck="false" aria-label="Hex color" />
+            </span>
+          </div>
+        </div>
+
+        <div class="setting">
+          <label class="toggle-row">
+            <span><span class="label">User cards</span>
+              <div class="desc">Click a username to see their profile, follow and sub info, badges, and recent messages.</div></span>
+            <input type="checkbox" data-setting="userCards" /><span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="setting">
+          <label class="toggle-row">
+            <span><span class="label">Timestamps</span>
+              <div class="desc">Show the time each message was sent.</div></span>
+            <input type="checkbox" data-setting="timestamps" /><span class="switch"></span>
+          </label>
+          <div class="sub" data-sub="timestamps">
+            <label for="timestampFormat">Format</label>
+            <select id="timestampFormat" data-setting="timestampFormat">
+              <option value="hm">HH:MM</option>
+              <option value="hms">HH:MM:SS</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="setting">
+          <label class="toggle-row">
+            <span><span class="label">Scroll back through history</span>
+              <div class="desc">Lets you scroll up; new messages stop auto-scrolling until you return to the bottom.</div></span>
+            <input type="checkbox" data-setting="scrollback" /><span class="switch"></span>
+          </label>
+          <div class="sub" data-sub="scrollback">
+            <label for="historyLimit">Messages kept in history</label>
+            <input id="historyLimit" type="number" min="10" max="5000" step="1" data-setting="historyLimit" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Badges ----------------------------------------------------- -->
+      <div class="tab-panel" data-tab-panel="badges" role="tabpanel" hidden>
+        <div class="setting">
+          <div class="section-title">Badges shown</div>
+          <div class="section-desc">Untick a badge type to hide it next to usernames.</div>
+          <div class="checks">
+            <label><input type="checkbox" data-badge="broadcaster" /> Broadcaster</label>
+            <label><input type="checkbox" data-badge="moderator" /> Moderator</label>
+            <label><input type="checkbox" data-badge="vip" /> VIP</label>
+            <label><input type="checkbox" data-badge="og" /> OG</label>
+            <label><input type="checkbox" data-badge="subscriber" /> Subscriber</label>
+            <label><input type="checkbox" data-badge="sub_gifter" /> Sub gifter</label>
+            <label><input type="checkbox" data-badge="founder" /> Founder</label>
+            <label><input type="checkbox" data-badge="verified" /> Verified</label>
+            <label><input type="checkbox" data-badge="staff" /> Kick staff</label>
+            <label><input type="checkbox" data-badge="bot" /> Bot</label>
+            <label><input type="checkbox" data-badge="level" /> Chat level</label>
+            <label><input type="checkbox" data-badge="event" /> Event / other Kick badges</label>
+            <label><input type="checkbox" data-badge="other" /> Unknown badge types</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filters ---------------------------------------------------- -->
+      <div class="tab-panel" data-tab-panel="filters" role="tabpanel" hidden>
+        <div class="setting">
+          <label class="toggle-row">
+            <span><span class="label">Hide messages a user repeats</span>
+              <div class="desc">Hides a message (text or emotes) when the same user has already posted it recently. Other users posting the same thing are not affected.</div></span>
+            <input type="checkbox" data-setting="dedupe" /><span class="switch"></span>
+          </label>
+          <div class="sub" data-sub="dedupe">
+            <label for="dedupeWindow">Timespan (seconds)</label>
+            <input id="dedupeWindow" type="number" min="1" max="3600" step="1" data-setting="dedupeWindowSec" />
+            <label for="dedupeRepeats">Times a user may post it before it is hidden</label>
+            <input id="dedupeRepeats" type="number" min="1" max="100" step="1" data-setting="dedupeRepeats" />
+            <div class="field-desc">1 = the first copy is shown, every repeat within the timespan is hidden. 2 = the first two are shown, and so on.</div>
+          </div>
+        </div>
+
+        <div class="setting">
+          <label class="toggle-row">
+            <span><span class="label">Collapse repeated emotes</span>
+              <div class="desc">The same emote spammed back-to-back in one message is shown once.</div></span>
+            <input type="checkbox" data-setting="collapseEmotes" /><span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="setting">
+          <div class="sub plain">
+            <label for="mentionMe">Highlight messages mentioning</label>
+            <input id="mentionMe" class="wide" type="text" maxlength="30" placeholder="your username" spellcheck="false" data-setting="mentionMe" />
+          </div>
+          <div class="section-desc">@mentions are always shown as tags; messages that @mention this name are also highlighted.</div>
+        </div>
+      </div>
+
+      <!-- Events ----------------------------------------------------- -->
+      <div class="tab-panel" data-tab-panel="events" role="tabpanel" hidden>
+        <div class="setting">
+          <div class="section-title">Moderation</div>
+          <div class="sub plain" style="margin-top: 8px">
+            <label for="deletedMessages">Deleted messages and banned users' messages</label>
+            <select id="deletedMessages" data-setting="deletedMessages">
+              <option value="gray">Gray out</option>
+              <option value="remove">Remove from chat</option>
+              <option value="keep">Leave as is</option>
+            </select>
+          </div>
+          <label class="toggle-row" style="margin-top: 8px">
+            <span><span class="label">Show moderation events</span>
+              <div class="desc">Timeouts, bans, unbans and chat clears as lines in the chat.</div></span>
+            <input type="checkbox" data-setting="showModeration" /><span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="setting">
+          <div class="section-title">Chat events</div>
+          <label class="toggle-row" style="margin-top: 8px">
+            <span><span class="label">Pinned message banner</span></span>
+            <input type="checkbox" data-setting="showPinned" /><span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span><span class="label">Subscriptions</span></span>
+            <input type="checkbox" data-setting="showSubs" /><span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span><span class="label">Gifted subs</span></span>
+            <input type="checkbox" data-setting="showGifts" /><span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span><span class="label">Hosts</span></span>
+            <input type="checkbox" data-setting="showHosts" /><span class="switch"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Overlay & sharing ------------------------------------------ -->
+      <div class="tab-panel" data-tab-panel="share" role="tabpanel" hidden>
+        <div class="setting">
+          <div class="section-title">OBS overlay</div>
+          <div class="section-desc">Add the overlay link as a Browser Source: transparent background, no controls, and messages that fade out.</div>
+          <div class="sub plain" style="margin-top: 8px">
+            <label for="overlayFadeSec">Fade messages out after (seconds, 0 = never)</label>
+            <input id="overlayFadeSec" type="number" min="0" max="600" step="1" data-setting="overlayFadeSec" />
+          </div>
+          <div class="buttons">
+            <button id="copyOverlayLink" type="button">Copy overlay link</button>
+          </div>
+        </div>
+
+        <div class="setting">
+          <div class="section-title">Save and share settings</div>
+          <div class="section-desc">A settings link carries everything in the URL, so it works in OBS or on another machine.</div>
+          <div class="buttons">
+            <button id="copySettingsLink" type="button">Copy settings link</button>
+            <button id="exportSettings" type="button">Export JSON</button>
+            <button id="importSettings" type="button">Import JSON</button>
+            <button id="resetSettings" type="button" class="danger">Reset to defaults</button>
+          </div>
+          <input id="importFile" type="file" accept="application/json,.json" hidden />
+          <div id="actionNote"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/config.js"></script>
+  <script src="/kick.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
