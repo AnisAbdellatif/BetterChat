@@ -64,6 +64,15 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
   the user a reply is aimed at, the pinned message's author, and the names in
   moderation and event lines (both the user banned and the moderator who
   banned them).
+- **Moderating, inside the extension only.** Hovering a message gives a
+  delete button, and a user card gains timeout (1m / 5m / 15m / 1h / 1d), ban
+  and unban. This page has no Kick session of its own and never will - that
+  is what makes it safe to open anywhere - so it asks the extension, whose
+  content script is on kick.com and can act as the signed-in moderator. On
+  betterchat.tech or in an overlay nothing answers the handshake and no
+  controls appear. Nothing is announced on success: Kick broadcasts the ban
+  or deletion and the chat already draws it. A refusal from Kick is shown as
+  a line, and a 403 hides the controls for the rest of the session.
 - Status pill when the connection to Kick is down or reconnecting, when the
   chat subscription is pending, or when the channel is offline (live /
   offline changes arrive in real time).

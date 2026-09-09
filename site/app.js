@@ -1308,6 +1308,10 @@
     tag.className = 'deleted-tag';
     row.appendChild(tag);
 
+    // Only where it can actually work, so ordinary viewers carry no extra
+    // node per message. CSS reveals it on hover.
+    if (modAvailable) row.appendChild(deleteButton());
+
     appendRow(row);
   }
 
@@ -1501,6 +1505,8 @@
       if (card.bio) userCardEl.appendChild(el('div', 'uc-bio', card.bio));
     }
 
+    if (modAvailable) userCardEl.appendChild(renderModTools((card && card.username) || username, card));
+
     const history = el('div', 'uc-history');
     history.appendChild(el('div', 'k', 'Recent messages'));
     const lines = (userHistory.get(username.toLowerCase()) || []).slice().reverse();
@@ -1618,8 +1624,152 @@
   });
 
   // ---------------------------------------------------------------------
-  // Moderation
+  // Moderation (only inside the BetterChat extension)
+  //
+  // This page cannot moderate anything by itself: it is on another origin
+  // from kick.com, so it has no session to act with, and that is the property
+  // that makes it safe to open anywhere. Inside the extension, though, the
+  // page framing it is kick.com itself, and the extension will act on the
+  // viewer's behalf. So the controls are offered only when a handshake with
+  // that parent answers. On betterchat.tech, or in an OBS overlay, nothing
+  // answers and nothing appears.
   // ---------------------------------------------------------------------
+
+  const MOD_CHANNEL = 'bck-mod';
+  const MOD_PARENT_ORIGIN = 'https://kick.com';
+  const MOD_TIMEOUT_MS = 10000;
+  const modPending = new Map();
+  let modAvailable = false;
+  let modRequests = 0;
+
+  function askParent(payload) {
+    if (window.parent === window) return Promise.resolve(null);
+    const id = `m${++modRequests}`;
+    return new Promise((resolve) => {
+      modPending.set(id, resolve);
+      window.parent.postMessage({ channel: MOD_CHANNEL, id, ...payload }, MOD_PARENT_ORIGIN);
+      setTimeout(() => {
+        if (modPending.delete(id)) resolve(null);
+      }, MOD_TIMEOUT_MS);
+    });
+  }
+
+  window.addEventListener('message', (e) => {
+    if (e.origin !== MOD_PARENT_ORIGIN || e.source !== window.parent) return;
+    const msg = e.data;
+    if (!msg || msg.channel !== MOD_CHANNEL || typeof msg.id !== 'string') return;
+    const resolve = modPending.get(msg.id);
+    if (!resolve) return;
+    modPending.delete(msg.id);
+    resolve(msg);
+  });
+
+  async function initModeration() {
+    if (overlayMode || window.parent === window) return;
+    const reply = await askParent({ type: 'hello' });
+    modAvailable = !!(reply && reply.available);
+    document.body.classList.toggle('can-moderate', modAvailable);
+    // The handshake can land after the first messages have been drawn, and a
+    // row builds its delete button only when moderation is already known to
+    // work. One pass catches whatever arrived in between.
+    if (!modAvailable) return;
+    for (const row of messagesEl.querySelectorAll('.msg[data-id]')) {
+      if (!row.querySelector('.mod-delete')) row.appendChild(deleteButton());
+    }
+  }
+
+  // Success needs no announcement: Kick broadcasts the ban or the deletion,
+  // and this page already draws those. Only failure has to be said out loud.
+  async function moderate(payload, describe) {
+    if (!modAvailable) return false;
+    const reply = await askParent({ type: 'action', ...payload });
+    if (reply && reply.ok) return true;
+
+    systemLine(`could not ${describe}: ${(reply && reply.error) || 'the extension did not answer'}`, true);
+    if (reply && reply.status === 403) {
+      // Not a moderator here. Stop offering controls that cannot work.
+      modAvailable = false;
+      document.body.classList.remove('can-moderate');
+      closeUserCard();
+    }
+    return false;
+  }
+
+  function modButton(label, title, className) {
+    const btn = el('button', className || 'uc-mod-btn', label);
+    btn.type = 'button';
+    btn.title = title;
+    return btn;
+  }
+
+  // Timeout lengths, in minutes, matching the ones Kick's own menu offers.
+  const TIMEOUT_CHOICES = [
+    ['1m', 1], ['5m', 5], ['15m', 15], ['1h', 60], ['1d', 1440],
+  ];
+
+  function renderModTools(username, card) {
+    const wrap = el('div', 'uc-mod');
+    const banned = !!(card && card.banned);
+
+    if (banned) {
+      const unban = modButton('Unban', `Lift the ban on ${username}`, 'uc-mod-btn danger');
+      unban.addEventListener('click', async () => {
+        unban.disabled = true;
+        const ok = await moderate({ action: 'unban', username }, `unban ${username}`);
+        if (ok) closeUserCard();
+        else unban.disabled = false;
+      });
+      wrap.appendChild(unban);
+      return wrap;
+    }
+
+    wrap.appendChild(el('span', 'uc-mod-label', 'Timeout'));
+    for (const [label, minutes] of TIMEOUT_CHOICES) {
+      const btn = modButton(label, `Time ${username} out for ${label}`);
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        const ok = await moderate(
+          { action: 'timeout', username, duration: minutes },
+          `time ${username} out`
+        );
+        if (ok) closeUserCard();
+        else btn.disabled = false;
+      });
+      wrap.appendChild(btn);
+    }
+
+    const ban = modButton('Ban', `Ban ${username} permanently`, 'uc-mod-btn danger');
+    ban.addEventListener('click', async () => {
+      ban.disabled = true;
+      const ok = await moderate({ action: 'ban', username }, `ban ${username}`);
+      if (ok) closeUserCard();
+      else ban.disabled = false;
+    });
+    wrap.appendChild(ban);
+    return wrap;
+  }
+
+  // One delegated handler rather than a listener per message.
+  messagesEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.mod-delete');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const row = btn.closest('.msg');
+    if (!row || !row.dataset.id) return;
+    btn.disabled = true;
+    moderate({ action: 'delete', messageId: row.dataset.id }, 'delete that message').then((ok) => {
+      if (!ok) btn.disabled = false;
+    });
+  });
+
+  function deleteButton() {
+    const btn = el('button', 'mod-delete', '×');
+    btn.type = 'button';
+    btn.title = 'Delete this message';
+    btn.setAttribute('aria-label', 'Delete this message');
+    return btn;
+  }
 
   function markDeleted(row, reason) {
     const mode = settings.deletedMessages;
@@ -1971,6 +2121,7 @@
 
   document.body.classList.toggle('overlay', overlayMode);
   applySettings();
+  initModeration();
   if (slug) watch(slug);
   else showHint();
 })();

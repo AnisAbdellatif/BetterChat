@@ -215,6 +215,52 @@
   .uc-history .none { color: #7d8085; font-style: italic; }
   .uc-status { padding: 14px; color: #adadb8; font-style: italic; }
   .uc-status.error { color: #ff6b6b; }
+
+  /* Moderation. Only drawn inside the extension, where the parent page can
+     act on Kick for us; body.can-moderate is what says so. */
+  body.can-moderate .msg { position: relative; }
+  .mod-delete {
+    position: absolute;
+    top: 1px;
+    right: 2px;
+    display: none;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.6);
+    color: #adadb8;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  body.can-moderate .msg:hover .mod-delete { display: block; }
+  .mod-delete:hover { color: #ff6b6b; }
+  .mod-delete:disabled { opacity: 0.4; cursor: default; }
+
+  .uc-mod {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+    padding: 0 14px 12px;
+  }
+  .uc-mod-label { color: #adadb8; font-size: 12px; margin-right: 2px; }
+  .uc-mod-btn {
+    background: #1f2429;
+    border: 1px solid #33373b;
+    color: #d3d3d8;
+    border-radius: 5px;
+    padding: 4px 8px;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .uc-mod-btn:hover:not(:disabled) { border-color: #53fc18; color: #efeff1; }
+  .uc-mod-btn.danger { color: #ff6b6b; }
+  .uc-mod-btn.danger:hover:not(:disabled) { border-color: #ff6b6b; }
+  .uc-mod-btn:disabled { opacity: 0.45; cursor: default; }
   .mention {
     color: #53fc18;
     font-weight: 600;
