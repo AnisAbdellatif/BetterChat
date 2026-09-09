@@ -23,8 +23,8 @@
 // from the last one - the cleanup below drops every cache that is not the
 // current one, so the numbers are for us, not for it.
 
-const MAJOR = 1;
-const MINOR = 2;
+const MAJOR = 2;
+const MINOR = 0;
 const VERSION = `v${MAJOR}.${MINOR}`;
 const CACHE = `betterchat-${VERSION}`;
 
@@ -32,7 +32,7 @@ const CACHE = `betterchat-${VERSION}`;
 // reads its channel from location.pathname, so one copy under a fixed key
 // answers a navigation to any channel.
 const SHELL = '/';
-const ASSETS = [SHELL, '/app.js', '/kick.js', '/config.js', '/favicon.ico'];
+const ASSETS = [SHELL, '/app.js', '/settings.js', '/kick.js', '/config.js', '/favicon.ico'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

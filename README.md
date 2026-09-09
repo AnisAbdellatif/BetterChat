@@ -24,10 +24,10 @@ lives in `site/kick.js`.
 ## Layout
 
 ```
-site/          the chat page: index.html, app.js, kick.js, config.js, sw.js,
-               privacy.html
+site/          the chat page: index.html, app.js, settings.js, kick.js,
+               config.js, sw.js, privacy.html
 betterchat/    the server: main.py (routes), stats.py (heartbeats -> stats), admin.html
-tests/         pytest (server) + node --test (kick.js)
+tests/         pytest (server) + node --test (kick.js, settings.js)
 pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
 ```
 
@@ -80,8 +80,9 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
 **Per-viewer settings** (gear button, saved in `localStorage`, tabbed)
 
 - Appearance: font size and family (presets or any installed font),
-  background color, message spacing, one color for all usernames, timestamps,
-  scroll-back through history with a history size, user cards on/off.
+  background color, message spacing, one color for all usernames.
+- Behavior: timestamps and their format, scroll-back through history with a
+  history size, user cards on/off.
 - Badges: choose which badge kinds are shown, and drag them (or use each
   row's arrows) into the order they are drawn in next to usernames. Badges of
   the same kind keep Kick's own order within it.
@@ -129,9 +130,13 @@ per-channel table. HTTP Basic Auth; a 404 until credentials are set.
     exponential backoff.
   - `normalizeMessage` / `normalizeEvent`: Kick's raw payloads into the
     shapes `app.js` renders.
-- `site/app.js` - rendering, filters, settings, user cards and overlay
-  mode. `site/config.js` - Kick's public Pusher app key
-  and cluster (the same values kick.com ships to every browser).
+- `site/settings.js` - the settings model, and the only part of the frontend
+  with no DOM in it: what a setting may hold (`sanitize`), and how it survives
+  a round trip through the URL. Split out so it can be tested on its own, and
+  loaded the same way as `kick.js`.
+- `site/app.js` - rendering, filters, user cards, moderation and overlay mode:
+  everything that touches the DOM. `site/config.js` - Kick's public Pusher app
+  key and cluster (the same values kick.com ships to every browser).
 - `betterchat/main.py` - serves `site/` (every unknown path is the chat
   page, real files as-is), takes heartbeats, serves the board, and answers
   `/privacy` with `site/privacy.html`. That route is registered before the
@@ -201,7 +206,7 @@ Tests:
 
 ```bash
 uv run pytest        # server: heartbeats, auth, site serving, persistence
-npm test             # kick.js: normalizers, API client (fake fetch), relay framing (Node)
+npm test             # kick.js normalizers / API client / relay framing, and settings.js (Node)
 ```
 
 | Variable | Purpose |

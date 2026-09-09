@@ -549,6 +549,9 @@
 
   .tabs {
     display: flex;
+    /* Six tabs, and the panel is only as wide as the viewport inside the
+       kick.com embed - so let them run onto a second row rather than clip. */
+    flex-wrap: wrap;
     gap: 2px;
     border-bottom: 1px solid #2a3035;
     margin-bottom: 12px;
@@ -774,6 +777,7 @@
 
       <div class="tabs" role="tablist">
         <button type="button" role="tab" data-tab="appearance" aria-selected="true">Appearance</button>
+        <button type="button" role="tab" data-tab="behavior">Behavior</button>
         <button type="button" role="tab" data-tab="badges">Badges</button>
         <button type="button" role="tab" data-tab="filters">Filters</button>
         <button type="button" role="tab" data-tab="events">Events</button>
@@ -828,7 +832,10 @@
             </span>
           </div>
         </div>
+      </div>
 
+      <!-- Behavior ----------------------------------------------- -->
+      <div class="tab-panel" data-tab-panel="behavior" role="tabpanel" hidden>
         <div class="setting">
           <label class="toggle-row">
             <span><span class="label">User cards</span>
@@ -1016,6 +1023,7 @@
   </div>
 
   <script src="/config.js"></script>
+  <script src="/settings.js"></script>
   <script src="/kick.js"></script>
   <script src="/app.js"></script>
 </body>
