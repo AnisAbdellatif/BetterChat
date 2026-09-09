@@ -66,6 +66,9 @@
   ]);
 
   const DELETED_MODES = Object.freeze(['gray', 'remove', 'keep']);
+  // What to do with a message the filter counts as a repeat: drop it, or add
+  // it to the copy already on screen as "xN".
+  const DEDUPE_MODES = Object.freeze(['hide', 'count']);
   const TIMESTAMP_FORMATS = Object.freeze(['hm', 'hms']);
 
   // Shown next to the checkbox for each kind in the settings panel.
@@ -110,6 +113,7 @@
     dedupe: true,
     dedupeWindowSec: 5,
     dedupeRepeats: 1,
+    dedupeMode: 'hide',
     collapseEmotes: true,
     deletedMessages: 'gray',
     showModeration: true,
@@ -193,6 +197,7 @@
       s.bgColor = raw.bgColor.toLowerCase();
     }
     s.deletedMessages = oneOf(raw.deletedMessages, DELETED_MODES, DEFAULTS.deletedMessages);
+    s.dedupeMode = oneOf(raw.dedupeMode, DEDUPE_MODES, DEFAULTS.dedupeMode);
     s.overlayFadeSec = clampInt(raw.overlayFadeSec, 0, 600, DEFAULTS.overlayFadeSec);
     return s;
   }
@@ -812,17 +817,28 @@
     return content.trim().replace(/\s+/g, ' ').toLowerCase();
   }
 
+  // The row currently standing for each key, so a repeat can be counted onto
+  // it instead of dropped. Kept in step with recentMessages by the prune
+  // below, so it cannot outgrow the window either.
+  const repeatRows = new Map(); // key -> the .msg element showing it
+
   function pruneRecent(now, windowMs) {
     for (const [key, times] of recentMessages) {
       const kept = times.filter((t) => now - t <= windowMs);
-      if (kept.length) recentMessages.set(key, kept);
-      else recentMessages.delete(key);
+      if (kept.length) {
+        recentMessages.set(key, kept);
+      } else {
+        recentMessages.delete(key);
+        repeatRows.delete(key);
+      }
     }
   }
 
-  // Returns true when the message should be hidden. Always records the
-  // message, so turning the option on mid-stream already has history.
-  function isRepeat(username, content) {
+  // Records the message and says whether it counts as a repeat. The key comes
+  // back either way, so the row that is drawn can be registered as the one a
+  // later repeat counts onto. Recording happens even with the filter off, so
+  // turning it on mid-stream already has history.
+  function repeatState(username, content) {
     const now = Date.now();
     const windowMs = settings.dedupeWindowSec * 1000;
     if (now - lastPrune > 5000) {
@@ -831,14 +847,41 @@
     }
 
     const text = normalizeContent(content);
-    if (!text) return false;
+    if (!text) return { key: null, repeat: false };
     const key = `${(username || '').toLowerCase()}\n${text}`;
     const times = (recentMessages.get(key) || []).filter((t) => now - t <= windowMs);
     const seenBefore = times.length;
     times.push(now);
     recentMessages.set(key, times);
 
-    return settings.dedupe && seenBefore >= settings.dedupeRepeats;
+    return { key, repeat: settings.dedupe && seenBefore >= settings.dedupeRepeats };
+  }
+
+  // Adds this repeat to the copy already on screen. False when there is no
+  // such copy any more - trimmed out of history, say - and the caller should
+  // just draw the message instead.
+  function countRepeat(key) {
+    const row = key ? repeatRows.get(key) : null;
+    if (!row || !row.isConnected) {
+      if (key) repeatRows.delete(key);
+      return false;
+    }
+
+    const total = Number(row.dataset.repeats || 1) + 1;
+    row.dataset.repeats = String(total);
+
+    let tag = row.querySelector('.repeat-count');
+    if (!tag) {
+      tag = el('span', 'repeat-count');
+      // In front of the message itself, after any timestamp.
+      const anchor = row.querySelector('.badges') || row.querySelector('.user');
+      row.insertBefore(tag, anchor || null);
+    }
+    tag.textContent = `×${total}`;
+    // "copies", not "posted N times": with an allowance above one, earlier
+    // copies got rows of their own and this counts the ones folded into this.
+    tag.title = `${total} copies`;
+    return true;
   }
 
   // ---------------------------------------------------------------------
@@ -1269,7 +1312,10 @@
     // Collapse first so the repeat filter compares what would be displayed:
     // "KEKW KEKW KEKW" and "KEKW KEKW" are the same message once collapsed.
     const content = settings.collapseEmotes ? collapseRepeatedEmotes(msg.content) : msg.content;
-    if (isRepeat(msg.username, content)) return;
+    const { key: repeatKey, repeat } = repeatState(msg.username, content);
+    // In "count" mode a repeat is added to the message already on screen; if
+    // that message is gone, countRepeat says so and this one is drawn fresh.
+    if (repeat && (settings.dedupeMode !== 'count' || countRepeat(repeatKey))) return;
 
     const row = document.createElement('div');
     row.className = 'msg';
@@ -1314,6 +1360,11 @@
     // Only where it can actually work, so ordinary viewers carry no extra
     // node per message. CSS reveals it on hover.
     if (modEnabled()) row.appendChild(deleteButton());
+
+    // This row now stands for the key, so a later repeat counts onto it.
+    // Registered whatever the mode is, so switching to counting mid-stream
+    // works on the messages already there.
+    if (repeatKey) repeatRows.set(repeatKey, row);
 
     appendRow(row);
   }

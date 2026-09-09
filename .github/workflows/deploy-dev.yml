@@ -1,0 +1,54 @@
+# Push to dev -> deploy to the dev instance on the same VPS.
+#
+# The dev instance is a separate checkout, compose project, port and data
+# volume, published on its own hostname. Nothing here touches production:
+# master has its own workflow, and the two deploys cannot even run at once,
+# since there is one runner.
+#
+# The tests run but do NOT gate the deploy. Dev is where half-finished work
+# goes to be tried in a real browser, and having to be green first would
+# defeat that. The container still has to come up healthy, so a build that
+# cannot boot fails loudly either way.
+
+name: Deploy dev
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Tests (not a gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Server tests
+        run: uv run --frozen pytest -q
+
+      - name: Frontend syntax and unit tests
+        run: |
+          npm run check
+          npm test
+
+  deploy:
+    # Deliberately no `needs: check`.
+    uses: ./.github/workflows/_deploy.yml
+    with:
+      deploy_dir: ${{ vars.DEPLOY_DIR_DEV || '/opt/betterchat-dev' }}
+      instance: dev

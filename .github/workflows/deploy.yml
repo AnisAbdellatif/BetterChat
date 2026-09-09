@@ -1,13 +1,9 @@
-# Push to master -> tests on GitHub's runners -> deploy on the VPS.
+# Push to master -> tests on GitHub's runners -> deploy to production.
 #
-# The deploy job runs on a self-hosted runner installed on the VPS itself, so
-# nothing has to reach in from outside: the runner dials out to GitHub and
-# pulls its work. No inbound port, no SSH key in a GitHub secret, no change to
-# Oracle's security list. See "Deploying" in the README for the runner setup.
-#
-# It does exactly what deploying by hand did - pull, rebuild, restart - in the
-# existing clone on the box, so the .env beside it and the compose project
-# name (and with it the betterchat-data volume) stay exactly as they are.
+# master is the stable branch: it is the only thing that reaches
+# betterchat.tech, and it only gets there if the tests pass. Day-to-day work
+# goes to the dev branch and its own instance (deploy-dev.yml), which cannot
+# touch this one.
 
 name: Deploy
 
@@ -53,52 +49,9 @@ jobs:
           npm test
 
   deploy:
-    name: Deploy to the VPS
+    # Production waits for green. Broken code belongs on dev, not here.
     needs: check
-    runs-on: [self-hosted, betterchat]
-    timeout-minutes: 20
-    env:
-      # Set this as a repository variable if the clone lives somewhere else.
-      DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '/opt/betterchat' }}
-    steps:
-      - name: Pull master
-        run: |
-          set -euo pipefail
-          cd "$DEPLOY_DIR"
-          git fetch --prune origin
-          # --ff-only: if the checkout on the box has diverged or is dirty,
-          # stop and say so rather than inventing a merge commit on a server.
-          git merge --ff-only "origin/${GITHUB_REF_NAME}"
-          echo "Now at $(git rev-parse --short HEAD): $(git log -1 --pretty=%s)"
-
-      - name: Rebuild and restart
-        run: |
-          set -euo pipefail
-          cd "$DEPLOY_DIR"
-          docker compose up -d --build --remove-orphans
-
-      - name: Wait for the container to report healthy
-        run: |
-          set -euo pipefail
-          cd "$DEPLOY_DIR"
-          id=$(docker compose ps -q betterchat)
-          if [ -z "$id" ]; then echo "no container is running"; exit 1; fi
-          # The image declares a HEALTHCHECK that fetches /health, so this is
-          # the container's own opinion, not a guess about timing.
-          for _ in $(seq 1 60); do
-            state=$(docker inspect -f '{{.State.Health.Status}}' "$id" 2>/dev/null || echo unknown)
-            case "$state" in
-              healthy) echo "healthy"; exit 0 ;;
-              unhealthy) echo "container went unhealthy"; docker compose logs --tail 50; exit 1 ;;
-            esac
-            sleep 2
-          done
-          echo "still not healthy after two minutes"
-          docker compose logs --tail 50
-          exit 1
-
-      - name: Drop the images the rebuild replaced
-        # Runs even if the deploy failed: the old layers are dead weight either
-        # way, and a small boot volume fills up quietly without this.
-        if: always()
-        run: docker image prune -f
+    uses: ./.github/workflows/_deploy.yml
+    with:
+      deploy_dir: ${{ vars.DEPLOY_DIR || '/opt/betterchat' }}
+      instance: production

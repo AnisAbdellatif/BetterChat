@@ -268,6 +268,19 @@
   .uc-mod-btn.danger { color: #ff6b6b; }
   .uc-mod-btn.danger:hover:not(:disabled) { border-color: #ff6b6b; }
   .uc-mod-btn:disabled { opacity: 0.45; cursor: default; }
+  /* "x3" on a message the same user repeated within the timespan. */
+  .repeat-count {
+    display: inline-block;
+    margin-right: 0.4em;
+    padding: 0 0.35em;
+    border-radius: 4px;
+    background: rgba(83, 252, 24, 0.16);
+    color: #53fc18;
+    font-weight: 700;
+    font-size: 0.85em;
+    font-variant-numeric: tabular-nums;
+  }
+
   .mention {
     color: #53fc18;
     font-weight: 600;
@@ -809,16 +822,21 @@
       <div class="tab-panel" data-tab-panel="filters" role="tabpanel" hidden>
         <div class="setting">
           <label class="toggle-row">
-            <span><span class="label">Hide messages a user repeats</span>
-              <div class="desc">Hides a message (text or emotes) when the same user has already posted it recently. Other users posting the same thing are not affected.</div></span>
+            <span><span class="label">Filter messages a user repeats</span>
+              <div class="desc">Acts when the same user posts the same message (text or emotes) again soon after. Other users posting the same thing are not affected.</div></span>
             <input type="checkbox" data-setting="dedupe" /><span class="switch"></span>
           </label>
           <div class="sub" data-sub="dedupe">
+            <label for="dedupeMode">What to do with the repeat</label>
+            <select id="dedupeMode" data-setting="dedupeMode">
+              <option value="hide">Hide it</option>
+              <option value="count">Count it on the first copy (&times;2, &times;3, ...)</option>
+            </select>
             <label for="dedupeWindow">Timespan (seconds)</label>
             <input id="dedupeWindow" type="number" min="1" max="3600" step="1" data-setting="dedupeWindowSec" />
-            <label for="dedupeRepeats">Times a user may post it before it is hidden</label>
+            <label for="dedupeRepeats">Times a user may post it before that applies</label>
             <input id="dedupeRepeats" type="number" min="1" max="100" step="1" data-setting="dedupeRepeats" />
-            <div class="field-desc">1 = the first copy is shown, every repeat within the timespan is hidden. 2 = the first two are shown, and so on.</div>
+            <div class="field-desc">1 = the first copy is shown and every repeat within the timespan is filtered. 2 = the first two are shown, and so on.</div>
           </div>
         </div>
 

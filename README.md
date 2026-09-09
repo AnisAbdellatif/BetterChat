@@ -86,9 +86,10 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
 - Badges: choose which badge kinds are shown, and drag them (or use each
   row's arrows) into the order they are drawn in next to usernames. Badges of
   the same kind keep Kick's own order within it.
-- Filters: hide messages a user repeats within a timespan (per user), collapse
-  an emote spammed back-to-back in one message, highlight messages that
-  @mention you.
+- Filters: act on messages a user repeats within a timespan (per user) -
+  either hide the repeat, or count it onto the copy already on screen as
+  `×2`, `×3` - collapse an emote spammed back-to-back in one message,
+  highlight messages that @mention you.
 - Events: what to do with deleted messages, which moderation / pin / sub /
   gift / host events to show, whether a pinned message starts collapsed, and
   a switch for the moderation controls (shown only where they work).
@@ -293,6 +294,55 @@ edited by hand the deploy stops and says so instead of inventing a merge
 commit on a server. Old image layers are pruned after every run, which on a
 small boot volume matters more than it sounds. The container restarts during
 the rebuild, so expect a few seconds of 502 through the tunnel.
+
+## Two branches, two instances
+
+`master` is stable and is the only thing that reaches `betterchat.tech`. Work
+happens on `dev`, which deploys to a **second instance on the same VPS** and
+cannot disturb the first one.
+
+They are separate in every way that matters: their own checkout, their own
+compose project, their own container, their own data volume, their own image
+tag and their own port. Nothing is shared but the host and the runner, and the
+runner takes one job at a time, so the two deploys cannot even overlap.
+
+The image tag is the part that is easy to get wrong. With a fixed
+`betterchat:local`, a dev build would move the tag that production's *next*
+restart resolves, and production would quietly come back up running dev's
+code - days later, with nothing in the logs to say why. `IMAGE_TAG` in `.env`
+is what prevents that.
+
+Set the dev instance up once, beside the production one:
+
+```bash
+git clone https://github.com/AnisAbdellatif/BetterChat.git /opt/betterchat-dev
+cd /opt/betterchat-dev && git checkout dev
+cp .env.example .env
+```
+
+Then in that `.env` set `COMPOSE_PROJECT_NAME=betterchat-dev`, `IMAGE_TAG=dev`,
+`HOST_PORT=8011`, and its own `ADMIN_USER` / `ADMIN_PASSWORD`. Bring it up once
+by hand (`docker compose up -d --build`), point a second tunnel hostname such
+as `dev.betterchat.tech` at `http://localhost:8011`, and **put a Cloudflare
+Access policy in front of it** - a dev build should not be something strangers
+can find. If the clone goes somewhere else, set the repository variable
+`DEPLOY_DIR_DEV` to its path.
+
+After that, a push to `dev` deploys there. The deploy logic itself lives in
+one place, `_deploy.yml`, which both branches call with a different directory.
+Two differences between them are deliberate:
+
+- **Production waits for the tests, dev does not.** Dev is where half-finished
+  work goes to be tried in a real browser, and having to be green first would
+  defeat the point. Both still have to come up healthy, so a build that cannot
+  boot fails loudly either way.
+- **Each deploy checks the branch of the checkout it is about to touch** and
+  refuses if it does not match the branch that was pushed, so a mix-up in
+  `DEPLOY_DIR` cannot drag production onto `dev`.
+
+To point the extension at the dev instance, change `BCK_BASE_URL` in a local
+copy of `defaults.js` and load that copy unpacked. The origin is fixed in the
+extension on purpose, so there is no setting for it.
 
 ## Things to know
 

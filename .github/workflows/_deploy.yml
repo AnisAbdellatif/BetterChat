@@ -1,0 +1,85 @@
+# The deploy itself, called by deploy.yml (master -> production) and
+# deploy-dev.yml (dev -> the dev instance). Both instances live on the same
+# VPS as separate checkouts, separate compose projects and separate ports, so
+# this only needs to know which directory to act in.
+#
+# It runs on the self-hosted runner installed on the VPS, which dials out to
+# GitHub for its work: no inbound port, no SSH key in a secret, nothing to
+# change in Oracle's security list. See "Deploying on a push" in the README.
+#
+# It does what deploying by hand did - pull, rebuild, restart - in the clone
+# already on the box, so the .env beside it and the compose project name (and
+# with it that instance's data volume) stay exactly as they are.
+
+name: Deploy (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      deploy_dir:
+        description: The checkout on the VPS to deploy in.
+        required: true
+        type: string
+      instance:
+        description: Which instance this is, for the job name only.
+        required: false
+        type: string
+        default: production
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.instance }}
+    runs-on: [self-hosted, betterchat]
+    timeout-minutes: 20
+    env:
+      DEPLOY_DIR: ${{ inputs.deploy_dir }}
+    steps:
+      - name: Pull ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_DIR"
+          # The branch this checkout tracks must be the one that was pushed;
+          # otherwise a dev push would drag production onto the dev branch.
+          on=$(git rev-parse --abbrev-ref HEAD)
+          if [ "$on" != "${GITHUB_REF_NAME}" ]; then
+            echo "$DEPLOY_DIR is on '$on', but this run is for '${GITHUB_REF_NAME}'."
+            echo "Check out the right branch there, or fix the DEPLOY_DIR variable."
+            exit 1
+          fi
+          git fetch --prune origin
+          # --ff-only: if the checkout on the box has diverged or is dirty,
+          # stop and say so rather than inventing a merge commit on a server.
+          git merge --ff-only "origin/${GITHUB_REF_NAME}"
+          echo "Now at $(git rev-parse --short HEAD): $(git log -1 --pretty=%s)"
+
+      - name: Rebuild and restart
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_DIR"
+          docker compose up -d --build --remove-orphans
+
+      - name: Wait for the container to report healthy
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_DIR"
+          id=$(docker compose ps -q betterchat)
+          if [ -z "$id" ]; then echo "no container is running"; exit 1; fi
+          # The image declares a HEALTHCHECK that fetches /health, so this is
+          # the container's own opinion, not a guess about timing.
+          for _ in $(seq 1 60); do
+            state=$(docker inspect -f '{{.State.Health.Status}}' "$id" 2>/dev/null || echo unknown)
+            case "$state" in
+              healthy) echo "healthy"; exit 0 ;;
+              unhealthy) echo "container went unhealthy"; docker compose logs --tail 50; exit 1 ;;
+            esac
+            sleep 2
+          done
+          echo "still not healthy after two minutes"
+          docker compose logs --tail 50
+          exit 1
+
+      - name: Drop the images the rebuild replaced
+        # Runs even if the deploy failed: the old layers are dead weight either
+        # way, and a small boot volume fills up quietly without this.
+        if: always()
+        run: docker image prune -f
