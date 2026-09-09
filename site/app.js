@@ -277,7 +277,7 @@
   function applyPinVisibility() {
     pinnedEl.hidden = !(settings.showPinned && pinnedActive);
     document.body.classList.toggle('has-pin', !pinnedEl.hidden);
-    if (!scrollbackEnabled()) messagesEl.scrollTop = messagesEl.scrollHeight;
+    stickIfFollowing();
   }
 
   // ---------------------------------------------------------------------
@@ -455,6 +455,31 @@
     return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 40;
   }
 
+  // Whether new messages pull the view down with them. This is a latched
+  // intention, not a measurement taken at append time. Re-deriving it from
+  // the layout on every flush was self-defeating: one reading that came back
+  // false left the view sitting away from the bottom, which made the next
+  // reading false as well, so autoscroll stayed off until the viewer
+  // scrolled back down by hand. Only the viewer changes it now.
+  let stickToBottom = true;
+
+  function stickIfFollowing() {
+    if (!scrollbackEnabled() || stickToBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  // Our own scrolls land at the bottom, so the event they cause re-asserts
+  // the latch rather than breaking it - no guard needed for them here.
+  messagesEl.addEventListener('scroll', () => {
+    stickToBottom = isNearBottom();
+  }, { passive: true });
+
+  // kick.com resizes the frame - theater mode, a collapsed sidebar, the
+  // window itself - which changes clientHeight without firing any scroll
+  // event. Re-assert rather than silently drifting off the bottom.
+  if (typeof ResizeObserver === 'function') {
+    new ResizeObserver(stickIfFollowing).observe(messagesEl);
+  }
+
   function trimHistory() {
     const limit = historyLimit();
     while (messagesEl.childElementCount > limit) {
@@ -477,32 +502,37 @@
   // scrollHeight again. Queue instead and flush once per frame through a
   // fragment, so a burst costs one layout however many messages it carries.
   let pendingRows = [];
-  let flushScheduled = false;
+  let flushFrame = 0;
+  let flushTimer = 0;
 
   function flushRows() {
-    flushScheduled = false;
+    if (flushFrame) cancelAnimationFrame(flushFrame);
+    if (flushTimer) clearTimeout(flushTimer);
+    flushFrame = flushTimer = 0;
     if (!pendingRows.length) return;
     const rows = pendingRows;
     pendingRows = [];
-    const stick = !scrollbackEnabled() || isNearBottom();
     const frag = document.createDocumentFragment();
     for (const row of rows) frag.appendChild(row);
     messagesEl.appendChild(frag);
     trimHistory();
     for (const row of rows) scheduleFade(row);
-    if (stick) messagesEl.scrollTop = messagesEl.scrollHeight;
+    stickIfFollowing();
   }
 
   function appendRow(row) {
     pendingRows.push(row);
-    // A hidden tab gets no animation frames. Cap the queue at what
-    // trimHistory would keep anyway so a backgrounded page can't grow it,
-    // and let the visibilitychange handler below flush what's left.
+    // Cap the queue at what trimHistory would keep anyway, so a page that
+    // isn't being painted can't grow it without bound.
     const cap = historyLimit();
     if (pendingRows.length > cap) pendingRows.splice(0, pendingRows.length - cap);
-    if (flushScheduled) return;
-    flushScheduled = true;
-    requestAnimationFrame(flushRows);
+    if (flushFrame || flushTimer) return;
+    flushFrame = requestAnimationFrame(flushRows);
+    // A cross-origin iframe that kick.com has scrolled out of view gets no
+    // animation frames at all, and nor does a background tab, so rAF on its
+    // own can stall the queue indefinitely. Timers are throttled but still
+    // fire, so one is always armed underneath as a floor.
+    flushTimer = setTimeout(flushRows, 250);
   }
 
   document.addEventListener('visibilitychange', () => {

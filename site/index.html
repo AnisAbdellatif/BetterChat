@@ -50,6 +50,10 @@
     line-height: 1.5;
     word-wrap: break-word;
     overflow-wrap: anywhere;
+    /* Scroll anchoring tries to hold the view still when content above it
+       changes, which is exactly what trimHistory does on every message. Let
+       the autoscroll in app.js own the scroll position instead. */
+    overflow-anchor: none;
   }
   /* Keeps a short chat pinned to the bottom like Kick's. Deliberately NOT
      justify-content: flex-end - content that overflows a flex-end column
