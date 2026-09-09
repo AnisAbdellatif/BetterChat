@@ -238,6 +238,51 @@ stats persist on the `betterchat-data` volume.
 `/admin` is Basic Auth over the tunnel's TLS. A Cloudflare Access policy on
 `/admin*` in front of it is free and worth adding.
 
+## Deploying on a push
+
+`.github/workflows/deploy.yml` runs the tests on GitHub's runners and, if they
+pass, pulls and rebuilds on the VPS. The deploy half runs on a **self-hosted
+runner installed on the VPS itself**, which dials out to GitHub for its work,
+so there is no inbound port to open, no SSH key to hand to GitHub, and nothing
+to change in Oracle's security list. It does what deploying by hand did, in
+the clone already on the box, so the `.env` beside it and the compose project
+name - and with it the `betterchat-data` volume - are untouched.
+
+Set it up once, as a normal user on the VPS (not root):
+
+```bash
+# The runner needs to own the clone and be able to talk to Docker.
+sudo chown -R "$USER" /opt/betterchat
+sudo usermod -aG docker "$USER"   # log out and back in for this to take
+
+mkdir -p ~/actions-runner && cd ~/actions-runner
+# Take the current URL from GitHub: repo -> Settings -> Actions -> Runners
+# -> New self-hosted runner (Linux, and pick x64 or ARM64 to match the VPS).
+curl -o runner.tar.gz -L <url from that page>
+tar xzf runner.tar.gz
+./config.sh --url https://github.com/AnisAbdellatif/BetterChat \
+            --token <token from that page> --labels betterchat
+sudo ./svc.sh install "$USER"     # run it as a service, not in your shell
+sudo ./svc.sh start
+```
+
+The `betterchat` label is what the workflow asks for, so the name has to
+match. If the clone lives somewhere other than `/opt/betterchat`, set a
+repository variable `DEPLOY_DIR` to its path rather than editing the
+workflow.
+
+After that, a push to `master` deploys. The Actions tab shows each run, the
+"Deploy" workflow can be re-run by hand from there, and the job fails loudly
+if the container does not come up healthy - it waits on the image's own
+`HEALTHCHECK` rather than guessing at timing. Two deploys never overlap: a
+push landing mid-build queues behind it instead of cancelling it.
+
+Worth knowing: the pull is `--ff-only`, so if the checkout on the box has been
+edited by hand the deploy stops and says so instead of inventing a merge
+commit on a server. Old image layers are pruned after every run, which on a
+small boot volume matters more than it sounds. The container restarts during
+the rebuild, so expect a few seconds of 502 through the tunnel.
+
 ## Things to know
 
 - Kick's REST API and Pusher feed are unofficial. If Kick ever restricts

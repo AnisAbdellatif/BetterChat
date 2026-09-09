@@ -1,0 +1,104 @@
+# Push to master -> tests on GitHub's runners -> deploy on the VPS.
+#
+# The deploy job runs on a self-hosted runner installed on the VPS itself, so
+# nothing has to reach in from outside: the runner dials out to GitHub and
+# pulls its work. No inbound port, no SSH key in a GitHub secret, no change to
+# Oracle's security list. See "Deploying" in the README for the runner setup.
+#
+# It does exactly what deploying by hand did - pull, rebuild, restart - in the
+# existing clone on the box, so the .env beside it and the compose project
+# name (and with it the betterchat-data volume) stay exactly as they are.
+
+name: Deploy
+
+on:
+  push:
+    branches: [master]
+  # Lets you redeploy the current master from the Actions tab without a push.
+  workflow_dispatch:
+
+# One deploy at a time. A push landing mid-build waits for it rather than
+# cancelling it: a half-finished "compose up" is not something to leave behind.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # Astral's own installer rather than a third-party action, so there is
+      # no action version to keep an eye on.
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Server tests
+        run: uv run --frozen pytest -q
+
+      # package.json has no dependencies - these are node --check and
+      # node --test - so there is nothing to install first.
+      - name: Frontend syntax and unit tests
+        run: |
+          npm run check
+          npm test
+
+  deploy:
+    name: Deploy to the VPS
+    needs: check
+    runs-on: [self-hosted, betterchat]
+    timeout-minutes: 20
+    env:
+      # Set this as a repository variable if the clone lives somewhere else.
+      DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '/opt/betterchat' }}
+    steps:
+      - name: Pull master
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_DIR"
+          git fetch --prune origin
+          # --ff-only: if the checkout on the box has diverged or is dirty,
+          # stop and say so rather than inventing a merge commit on a server.
+          git merge --ff-only "origin/${GITHUB_REF_NAME}"
+          echo "Now at $(git rev-parse --short HEAD): $(git log -1 --pretty=%s)"
+
+      - name: Rebuild and restart
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_DIR"
+          docker compose up -d --build --remove-orphans
+
+      - name: Wait for the container to report healthy
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_DIR"
+          id=$(docker compose ps -q betterchat)
+          if [ -z "$id" ]; then echo "no container is running"; exit 1; fi
+          # The image declares a HEALTHCHECK that fetches /health, so this is
+          # the container's own opinion, not a guess about timing.
+          for _ in $(seq 1 60); do
+            state=$(docker inspect -f '{{.State.Health.Status}}' "$id" 2>/dev/null || echo unknown)
+            case "$state" in
+              healthy) echo "healthy"; exit 0 ;;
+              unhealthy) echo "container went unhealthy"; docker compose logs --tail 50; exit 1 ;;
+            esac
+            sleep 2
+          done
+          echo "still not healthy after two minutes"
+          docker compose logs --tail 50
+          exit 1
+
+      - name: Drop the images the rebuild replaced
+        # Runs even if the deploy failed: the old layers are dead weight either
+        # way, and a small boot volume fills up quietly without this.
+        if: always()
+        run: docker image prune -f
