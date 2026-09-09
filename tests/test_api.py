@@ -159,3 +159,19 @@ def test_frame_ancestors_header_is_opt_in(monkeypatch, tmp_path, site):
             assert c.get(path).headers["content-security-policy"] == (
                 "frame-ancestors 'self' https://kick.com"
             )
+
+
+def test_service_worker_is_served_at_the_root_scope(monkeypatch):
+    """A worker must come back as JS, not as the SPA fallback HTML.
+
+    Its scope is capped by its own path, so it has to sit at / and be a real
+    file - if the catch-all ever swallowed it, registration would fail with a
+    bad MIME type and the offline shell would quietly stop working.
+    """
+    monkeypatch.delenv("SITE_DIR", raising=False)
+    app = create_app(Stats(path=None), sample_loop=False)
+    with TestClient(app) as c:
+        res = c.get("/sw.js")
+        assert res.status_code == 200
+        assert "javascript" in res.headers["content-type"]
+        assert "betterchat-" in res.text

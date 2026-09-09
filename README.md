@@ -17,7 +17,7 @@ lives in `site/kick.js`.
 ## Layout
 
 ```
-site/          the chat page: index.html, app.js, kick.js, config.js
+site/          the chat page: index.html, app.js, kick.js, config.js, sw.js
 betterchat/    the server: main.py (routes), stats.py (heartbeats -> stats), admin.html
 tests/         pytest (server) + node --test (kick.js)
 pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
@@ -109,6 +109,22 @@ without a `leave` drops out after 7 minutes. Message counts on the board are
 the maximum any viewer of a channel reported per minute, which approximates
 the channel's real rate instead of multiplying it by the viewer count.
 
+## Surviving an outage
+
+`site/sw.js` caches the shell and the scripts, so the page loads even when
+this server doesn't answer. That is worth more here than for most sites:
+the chat is entirely client-side, so a cached load is a fully working one -
+`kick.js` reaches kick.com directly for the API and the Pusher feed, and the
+only thing lost while the origin is down is the heartbeats, which already
+fail silently.
+
+Navigations are network-first, so a deploy is picked up straight away and
+the cached shell is only used when the origin can't be reached. Scripts are
+stale-while-revalidate: instant from cache, refreshed in the background, so
+a viewer is one load behind at worst. **Bump `VERSION` in `site/sw.js` when
+you change a file under `site/`** - with no build step and no hashed
+filenames, that constant is the only thing that retires an old cache.
+
 ## Running it
 
 Needs [uv](https://docs.astral.sh/uv/) (Python 3.12+ is fetched by uv).
@@ -185,4 +201,6 @@ stats persist on the `betterchat-data` volume.
   browser console.
 - The site has no build step, so script names never change; the server
   sends `must-revalidate` for files and `no-cache` for the page, and
-  Cloudflare honors that.
+  Cloudflare honors that. Because the names never change, a long `max-age`
+  is not an option - it would pin viewers to stale JS with no way to break
+  out. Versioning lives in the service worker instead.

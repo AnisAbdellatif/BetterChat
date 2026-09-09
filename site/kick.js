@@ -181,6 +181,8 @@
     }
   }
 
+  const MAX_CACHE_ENTRIES = 200;
+
   class KickApi {
     constructor({ baseUrl = 'https://kick.com/api/v2', fetchImpl } = {}) {
       this.baseUrl = baseUrl.replace(/\/+$/, '');
@@ -197,11 +199,19 @@
       return body;
     }
 
+    // Expired entries used to sit in the map forever: the TTL was only
+    // checked on read, and user-card keys are unbounded (one per distinct
+    // username looked up). Drop stale hits and keep the map to a fixed size,
+    // oldest first - Map iterates in insertion order.
     async cached(key, ttlMs, load) {
       const hit = this.cache.get(key);
       if (hit && hit.expiresAt > Date.now()) return hit.value;
+      if (hit) this.cache.delete(key);
       const value = await load();
       this.cache.set(key, { value, expiresAt: Date.now() + ttlMs });
+      while (this.cache.size > MAX_CACHE_ENTRIES) {
+        this.cache.delete(this.cache.keys().next().value);
+      }
       return value;
     }
 

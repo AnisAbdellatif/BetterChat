@@ -267,6 +267,14 @@
     for (const row of messagesEl.querySelectorAll('.msg[data-text]')) {
       row.classList.toggle('mentions-me', mentionsMe(row.dataset.text));
     }
+    applyPinVisibility();
+  }
+
+  // The pin banner changes the list's height, so showing or hiding it has to
+  // re-stick the scroll - but nothing about the messages themselves changed,
+  // so it must not trigger applySettings' four full-list passes. Pins arrive
+  // on every reconnect, and the list can hold thousands of rows.
+  function applyPinVisibility() {
     pinnedEl.hidden = !(settings.showPinned && pinnedActive);
     document.body.classList.toggle('has-pin', !pinnedEl.hidden);
     if (!scrollbackEnabled()) messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -463,13 +471,43 @@
     }, settings.overlayFadeSec * 1000);
   }
 
-  function appendRow(row) {
+  // Messages arrive in bursts - a busy channel can land several in a single
+  // frame - and appending one at a time cost two forced layouts each:
+  // isNearBottom() reads scrollTop/scrollHeight, then the scroll write reads
+  // scrollHeight again. Queue instead and flush once per frame through a
+  // fragment, so a burst costs one layout however many messages it carries.
+  let pendingRows = [];
+  let flushScheduled = false;
+
+  function flushRows() {
+    flushScheduled = false;
+    if (!pendingRows.length) return;
+    const rows = pendingRows;
+    pendingRows = [];
     const stick = !scrollbackEnabled() || isNearBottom();
-    messagesEl.appendChild(row);
+    const frag = document.createDocumentFragment();
+    for (const row of rows) frag.appendChild(row);
+    messagesEl.appendChild(frag);
     trimHistory();
-    scheduleFade(row);
+    for (const row of rows) scheduleFade(row);
     if (stick) messagesEl.scrollTop = messagesEl.scrollHeight;
   }
+
+  function appendRow(row) {
+    pendingRows.push(row);
+    // A hidden tab gets no animation frames. Cap the queue at what
+    // trimHistory would keep anyway so a backgrounded page can't grow it,
+    // and let the visibilitychange handler below flush what's left.
+    const cap = historyLimit();
+    if (pendingRows.length > cap) pendingRows.splice(0, pendingRows.length - cap);
+    if (flushScheduled) return;
+    flushScheduled = true;
+    requestAnimationFrame(flushRows);
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) flushRows();
+  });
 
   function systemLine(text, isError) {
     const row = document.createElement('div');
@@ -959,6 +997,13 @@
   const userHistory = new Map(); // lowercase username -> [{content, created_at}]
   const userCardCache = new Map(); // lowercase username -> {data, fetchedAt}
   const HISTORY_PER_USER = 25;
+  // Both maps are keyed by username, so on a big channel they would other-
+  // wise grow with every distinct chatter for as long as the tab is open -
+  // thousands an hour, none of it ever released. Both are kept in
+  // least-recently-used order (re-inserting moves a key to the end) and
+  // trimmed from the front.
+  const HISTORY_USERS_CAP = 500;
+  const USER_CARD_CACHE_CAP = 50;
   const USER_CARD_TTL_MS = 3 * 60 * 1000;
   let userCardRequest = 0;
 
@@ -968,7 +1013,11 @@
     const list = userHistory.get(key) || [];
     list.push({ content: msg.content, created_at: msg.created_at });
     if (list.length > HISTORY_PER_USER) list.shift();
+    userHistory.delete(key);
     userHistory.set(key, list);
+    while (userHistory.size > HISTORY_USERS_CAP) {
+      userHistory.delete(userHistory.keys().next().value);
+    }
   }
 
   function formatDate(iso) {
@@ -1114,10 +1163,13 @@
     userCardEl.hidden = false;
     const cached = userCardCache.get(key);
     if (cached && Date.now() - cached.fetchedAt < USER_CARD_TTL_MS) {
+      userCardCache.delete(key);
+      userCardCache.set(key, cached);
       renderUserCard(username, cached.data);
       placeUserCard(x, y);
       return;
     }
+    if (cached) userCardCache.delete(key);
 
     showUserCardStatus(username, 'Loading...');
     placeUserCard(x, y);
@@ -1135,6 +1187,9 @@
 
     if (card) {
       userCardCache.set(key, { data: card, fetchedAt: Date.now() });
+      while (userCardCache.size > USER_CARD_CACHE_CAP) {
+        userCardCache.delete(userCardCache.keys().next().value);
+      }
       renderUserCard(username, card);
     } else {
       // Still useful without Kick's data: show what we have locally.
@@ -1247,13 +1302,13 @@
         pinTimer = setTimeout(clearPin, Math.min(remaining, 0x7fffffff));
       }
     }
-    applySettings();
+    applyPinVisibility();
   }
 
   function clearPin() {
     pinnedActive = false;
     clearTimeout(pinTimer);
-    applySettings();
+    applyPinVisibility();
   }
 
   document.getElementById('closePin').addEventListener('click', clearPin);
@@ -1352,7 +1407,11 @@
 
   function onEvent(ev) {
     const handler = ev && EVENT_HANDLERS[ev.type];
-    if (handler) handler(ev);
+    if (!handler) return;
+    // Deletions and bans look rows up in the DOM, so anything still queued
+    // for this frame has to land first or it would be missed.
+    flushRows();
+    handler(ev);
   }
 
   // ---------------------------------------------------------------------
@@ -1524,6 +1583,19 @@
     });
     relay.connect();
     window.addEventListener('beforeunload', () => relay.close());
+  }
+
+  // Service worker: caches the shell and scripts so the page still loads
+  // when this origin is down. The chat itself only needs kick.com, so a
+  // cached load is a fully working one - see site/sw.js. Allowed on https
+  // and on localhost, which is where the API permits it.
+  if (
+    'serviceWorker' in navigator &&
+    (location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname))
+  ) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
   }
 
   document.body.classList.toggle('overlay', overlayMode);
