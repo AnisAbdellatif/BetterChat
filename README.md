@@ -49,9 +49,15 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
   grayed out (or removed, or left alone); timeouts, bans, unbans and chat
   clears appear as lines. Pinned message banner, subscription / gifted-sub /
   host lines.
-- Click a username for a user card: avatar, follower count, joined / followed
-  / subscribed-for dates, badges, and the messages seen from them this
-  session.
+- The pinned banner hides rather than closes: hiding it puts a pin button
+  under the gear that brings it back, and a newly pinned message shows again
+  on its own.
+- Click any username for a user card: avatar, follower count, joined /
+  followed / subscribed-for dates, badges, and the messages seen from them
+  this session. Works on the message author, `@mentions` inside a message,
+  the user a reply is aimed at, the pinned message's author, and the names in
+  moderation and event lines (both the user banned and the moderator who
+  banned them).
 - Status pill when the connection to Kick is down or reconnecting, when the
   chat subscription is pending, or when the channel is offline (live /
   offline changes arrive in real time).

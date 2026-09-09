@@ -269,7 +269,11 @@
   // so it must not trigger applySettings' four full-list passes. Pins arrive
   // on every reconnect, and the list can hold thousands of rows.
   function applyPinVisibility() {
-    pinnedEl.hidden = !(settings.showPinned && pinnedActive);
+    // A live pin the viewer has hidden is not gone: the banner goes away and
+    // the button under the gear appears to bring it back.
+    const live = settings.showPinned && pinnedActive;
+    pinnedEl.hidden = !live || pinHidden;
+    showPinBtn.hidden = !live || !pinHidden;
     document.body.classList.toggle('has-pin', !pinnedEl.hidden);
     stickIfFollowing();
   }
@@ -1223,16 +1227,38 @@
     placeUserCard(x, y);
   }
 
-  messagesEl.addEventListener('click', (e) => {
-    const user = e.target.closest('.msg > .user');
-    if (!user || !messagesEl.contains(user)) return;
+  // Everywhere a username is shown and is worth a card: the author of a
+  // message, an @mention inside one, the user a reply is aimed at, the users
+  // named in moderation lines (the one banned and the moderator who did it)
+  // and in sub / gift / host lines, and the author of the pinned message.
+  const USER_TARGETS =
+    '.msg > .user, .mention, .reply > .user, .event > .user, #pinned .user';
+
+  // Mentions and reply lines carry the "@"; the card is looked up by the bare
+  // name.
+  function usernameFromTarget(el) {
+    return (el.textContent || '').trim().replace(/^@+/, '');
+  }
+
+  function onUsernameClick(e) {
+    const target = e.target.closest(USER_TARGETS);
+    if (!target) return;
+    const username = usernameFromTarget(target);
+    if (!username) return;
     e.preventDefault();
-    openUserCard(user.textContent, e.clientX, e.clientY);
-  });
+    // A reply line's tooltip would otherwise sit over the card.
+    hideReplyTip();
+    openUserCard(username, e.clientX, e.clientY);
+  }
+
+  messagesEl.addEventListener('click', onUsernameClick);
+  // The banner is built further down the file, so it is looked up here rather
+  // than through the variable that does not exist yet.
+  document.getElementById('pinned').addEventListener('click', onUsernameClick);
 
   document.addEventListener('mousedown', (e) => {
     if (userCardEl.hidden) return;
-    if (userCardEl.contains(e.target) || e.target.closest('.msg > .user')) return;
+    if (userCardEl.contains(e.target) || e.target.closest(USER_TARGETS)) return;
     closeUserCard();
   });
 
@@ -1299,7 +1325,11 @@
 
   const pinnedEl = document.getElementById('pinned');
   const pinContent = document.getElementById('pinContent');
+  const showPinBtn = document.getElementById('showPin');
   let pinnedActive = false;
+  // Hidden by the viewer rather than dismissed: the pin is still live and can
+  // be brought back. Reset by each new pin, so a fresh one is never missed.
+  let pinHidden = false;
   let pinTimer = null;
 
   function showPin(ev) {
@@ -1314,6 +1344,7 @@
     appendMessageContent(pinContent, msg.content || '');
 
     pinnedActive = true;
+    pinHidden = false;
     clearTimeout(pinTimer);
     // Expiry is an absolute timestamp from the server (Kick's pins default
     // to 20 hours). Cap the timer: browsers clamp very long timeouts.
@@ -1331,11 +1362,22 @@
 
   function clearPin() {
     pinnedActive = false;
+    pinHidden = false;
     clearTimeout(pinTimer);
     applyPinVisibility();
   }
 
-  document.getElementById('closePin').addEventListener('click', clearPin);
+  // The banner's own button hides it; the pin stays live either way, so the
+  // one under the gear puts it back.
+  document.getElementById('closePin').addEventListener('click', () => {
+    pinHidden = true;
+    applyPinVisibility();
+  });
+
+  showPinBtn.addEventListener('click', () => {
+    pinHidden = false;
+    applyPinVisibility();
+  });
 
   // ---------------------------------------------------------------------
   // Chat events (subs, gifts, hosts)

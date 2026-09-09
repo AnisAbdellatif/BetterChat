@@ -123,8 +123,16 @@
   /* display:inline-block above would otherwise beat the browser's [hidden] rule. */
   .badge[hidden] { display: none; }
   .user { font-weight: 700; }
-  body.user-cards .msg > .user { cursor: pointer; }
-  body.user-cards .msg > .user:hover { text-decoration: underline; }
+  body.user-cards .msg > .user,
+  body.user-cards .reply > .user,
+  body.user-cards .event > .user,
+  body.user-cards #pinned .user,
+  body.user-cards .mention { cursor: pointer; }
+  body.user-cards .msg > .user:hover,
+  body.user-cards .reply > .user:hover,
+  body.user-cards .event > .user:hover,
+  body.user-cards #pinned .user:hover,
+  body.user-cards .mention:hover { text-decoration: underline; }
   .sep { color: #adadb8; }
 
   /* User card (click a username) */
@@ -325,6 +333,7 @@
   body.overlay #messages { overflow-y: hidden; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 6px rgba(0, 0, 0, 0.7); }
   body.overlay .msg:hover { background: none; }
   body.overlay #settingsBtn { display: none; }
+  body.overlay #showPin { display: none; }
   body.overlay #statusPill { display: none; }
   body.overlay .event, body.overlay #pinned { text-shadow: none; }
   body.overlay #pinned { right: 8px; }
@@ -350,6 +359,32 @@
   }
   #settingsBtn:hover, #settingsBtn:focus-visible { opacity: 1; color: #efeff1; }
   #settingsBtn svg { width: 18px; height: 18px; }
+
+  /* Brings back a pinned message that was hidden. Sits under the gear, and
+     only exists while there is a pin to bring back. */
+  #showPin {
+    position: fixed;
+    top: 42px;
+    right: 6px;
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #adadb8;
+    cursor: pointer;
+    opacity: 0.35;
+    transition: opacity 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    line-height: 1;
+    z-index: 6;
+  }
+  #showPin:hover, #showPin:focus-visible { opacity: 1; }
+  /* display:flex above would otherwise beat the browser's [hidden] rule. */
+  #showPin[hidden] { display: none; }
 
   #settingsOverlay {
     position: fixed;
@@ -534,7 +569,7 @@
   <div id="pinned" hidden>
     <span class="pin-icon">📌</span>
     <div class="pin-body"><span class="pin-label">Pinned</span><span id="pinContent"></span></div>
-    <button id="closePin" type="button" aria-label="Dismiss pinned message">&times;</button>
+    <button id="closePin" type="button" title="Hide pinned message" aria-label="Hide pinned message">&minus;</button>
   </div>
 
   <div id="messages"></div>
@@ -551,6 +586,8 @@
       <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path>
     </svg>
   </button>
+
+  <button id="showPin" type="button" hidden title="Show pinned message" aria-label="Show pinned message">📌</button>
 
   <div id="settingsOverlay" hidden>
     <div id="settingsPanel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">

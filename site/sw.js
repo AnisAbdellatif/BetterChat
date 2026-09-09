@@ -11,7 +11,7 @@
 // lives here instead: bump VERSION on deploy and the old cache is dropped on
 // activate.
 
-const VERSION = 'v2';
+const VERSION = 'v3';
 const CACHE = `betterchat-${VERSION}`;
 
 // The chat page is served for every unknown path (/xqc, /clix, ...) and
