@@ -55,7 +55,9 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
   host lines.
 - The pinned banner hides rather than closes: hiding it puts a pin button
   under the gear that brings it back, and a newly pinned message shows again
-  on its own.
+  on its own. Turn on "start collapsed" and it goes the other way - a pin
+  arrives collapsed to that button and only opens when you say so, on
+  reconnects included.
 - Click any username for a user card: avatar, follower count, joined /
   followed / subscribed-for dates, badges, and the messages seen from them
   this session. Works on the message author, `@mentions` inside a message,
@@ -77,8 +79,8 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
 - Filters: hide messages a user repeats within a timespan (per user), collapse
   an emote spammed back-to-back in one message, highlight messages that
   @mention you.
-- Events: what to do with deleted messages, and which moderation / pin /
-  sub / gift / host events to show.
+- Events: what to do with deleted messages, which moderation / pin / sub /
+  gift / host events to show, and whether a pinned message starts collapsed.
 - Overlay & sharing: fade-out time for the OBS overlay, copy an overlay or
   settings link, export / import settings as JSON, reset.
 

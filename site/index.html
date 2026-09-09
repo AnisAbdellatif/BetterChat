@@ -506,6 +506,13 @@
     color: #d3d3d8;
   }
   .sub[hidden] { display: none; }
+  /* Same indent as .sub, for a nested toggle rather than a labelled field.
+     No display of its own, so the browser's [hidden] rule works as is. */
+  .sub-toggle {
+    margin-top: 8px;
+    padding-left: 10px;
+    border-left: 2px solid #2a3035;
+  }
   .sub .field-desc { grid-column: 1 / -1; color: #adadb8; font-size: 12px; margin-top: -2px; }
   .sub input[type="number"], .sub input[type="text"], .sub select {
     box-sizing: border-box;
@@ -804,6 +811,13 @@
             <span><span class="label">Pinned message banner</span></span>
             <input type="checkbox" data-setting="showPinned" /><span class="switch"></span>
           </label>
+          <div class="sub-toggle" data-sub="showPinned">
+            <label class="toggle-row">
+              <span><span class="label">Start collapsed</span>
+                <div class="desc">A pinned message arrives collapsed and stays out of the way until you open it with the pin button under the gear.</div></span>
+              <input type="checkbox" data-setting="collapsePinned" /><span class="switch"></span>
+            </label>
+          </div>
           <label class="toggle-row">
             <span><span class="label">Subscriptions</span></span>
             <input type="checkbox" data-setting="showSubs" /><span class="switch"></span>

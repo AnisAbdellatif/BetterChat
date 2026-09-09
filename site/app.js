@@ -114,6 +114,8 @@
     deletedMessages: 'gray',
     showModeration: true,
     showPinned: true,
+    // Pinned messages arrive collapsed, and only open when the viewer says so.
+    collapsePinned: false,
     showSubs: true,
     showGifts: true,
     showHosts: true,
@@ -1676,8 +1678,10 @@
   const pinContent = document.getElementById('pinContent');
   const showPinBtn = document.getElementById('showPin');
   let pinnedActive = false;
-  // Hidden by the viewer rather than dismissed: the pin is still live and can
-  // be brought back. Reset by each new pin, so a fresh one is never missed.
+  // Collapsed rather than dismissed: the pin is still live and can be brought
+  // back. Set afresh by each new pin, either open or collapsed depending on
+  // the collapsePinned setting, so the viewer's choice never sticks to a pin
+  // they have not seen.
   let pinHidden = false;
   let pinTimer = null;
 
@@ -1694,7 +1698,9 @@
     appendMessageContent(pinContent, msg.content || '');
 
     pinnedActive = true;
-    pinHidden = false;
+    // Each new pin starts in the state the viewer asked for: open, or
+    // collapsed to the pin button under the gear.
+    pinHidden = settings.collapsePinned;
     clearTimeout(pinTimer);
     // Expiry is an absolute timestamp from the server (Kick's pins default
     // to 20 hours). Cap the timer: browsers clamp very long timeouts.
