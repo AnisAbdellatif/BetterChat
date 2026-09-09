@@ -181,16 +181,26 @@
     return t;
   }
 
-  // "open chat tabs", plus the embed split once anyone is watching through
-  // one (the chat page in an iframe on kick.com rather than opened here).
+  // "open chat tabs", plus whichever splits are worth mentioning: how many
+  // arrived through the kick.com embed rather than opening the site, and how
+  // many are on the dev deployment (which reports to this board too).
   function viewersSub(current) {
+    const parts = [];
     const embed = (current.by_source || {}).embed || 0;
-    return embed ? `open chat tabs - ${fmt(embed)} embedded` : 'open chat tabs';
+    if (embed) parts.push(`${fmt(embed)} embedded`);
+    const dev = (current.by_build || {}).dev || 0;
+    if (dev) parts.push(`${fmt(dev)} on dev`);
+    return parts.length ? `open chat tabs - ${parts.join(', ')}` : 'open chat tabs';
   }
 
   function renderTiles(s) {
     $('tiles').replaceChildren(
       tile('Viewers now', fmt(s.current.viewers), viewersSub(s.current)),
+      tile(
+        'Stable / dev',
+        `${fmt((s.current.by_build || {}).stable || 0)} / ${fmt((s.current.by_build || {}).dev || 0)}`,
+        'viewers now, by deployment'
+      ),
       tile('Channels watched', fmt(s.current.channels_watched), `${fmt(s.totals.channels_seen)} seen since ${new Date(s.first_started_at * 1000).toLocaleDateString()}`),
       tile('Messages seen', fmt(s.current.messages_total), 'across all channels'),
       tile('Total joins', fmt(s.totals.joins), 'tabs opened on a channel'),

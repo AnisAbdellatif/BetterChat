@@ -197,3 +197,25 @@ def test_privacy_is_404_when_the_site_has_no_policy(client):
     # The test site fixture has no privacy.html: a missing file is a 404, not
     # a 500 from FileResponse at request time.
     assert client.get("/privacy").status_code == 404
+
+
+def test_dev_beat_is_counted_on_the_same_board(client):
+    """dev.betterchat.tech posts here rather than keeping a board of its own."""
+    client.post("/api/beat", content='{"tab":"tab-aaaaaaaa","channel":"xqc","event":"join"}')
+    client.post(
+        "/api/beat",
+        content='{"tab":"tab-bbbbbbbb","channel":"xqc","event":"join","build":"dev"}',
+    )
+    snap = client.get("/admin/api/stats", headers=auth()).json()
+    assert snap["current"]["viewers"] == 2
+    assert snap["current"]["by_build"] == {"stable": 1, "dev": 1}
+
+
+def test_unknown_build_is_refused(client):
+    res = client.post(
+        "/api/beat",
+        content='{"tab":"tab-aaaaaaaa","channel":"xqc","event":"join","build":"staging"}',
+    )
+    assert res.status_code == 400
+    snap = client.get("/admin/api/stats", headers=auth()).json()
+    assert snap["current"]["viewers"] == 0

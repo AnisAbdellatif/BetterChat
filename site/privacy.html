@@ -41,21 +41,46 @@
   &ldquo;BetterChat for Kick&rdquo; browser extension. Both are run by one independent
   developer and are not connected to Kick.</p>
 
-  <p class="lead">BetterChat has no accounts, no cookies, no analytics, no advertising
-  and no trackers. It does not collect personal information, and it does not send your
-  chat activity anywhere.</p>
+  <p class="lead">BetterChat has no accounts, no cookies, no advertising and no
+  trackers. It does not collect personal information, and it does not send your chat
+  activity anywhere. The one thing it can send is an anonymous count of how many tabs
+  are watching, and only if you say yes when asked.</p>
 
   <h2>What BetterChat stores</h2>
   <p>Your settings &mdash; font, colours, filters, which badges to show and so on &mdash;
   are saved by your browser in <code>localStorage</code>, on your own device. They are
   never sent to us. Clearing your browser&rsquo;s site data removes them.</p>
-  <p>The extension stores one value, <code>enabled</code>, recording whether chat
-  replacement is switched on. It is kept in <code>chrome.storage.sync</code>, so Chrome
-  may sync it between devices you are signed in to. It holds no personal information.</p>
+  <p>The extension stores two switches: <code>enabled</code>, whether chat replacement
+  is on, and <code>useDev</code>, whether to load the test build instead of the normal
+  one. They are kept in <code>chrome.storage.sync</code>, so Chrome may sync them
+  between devices you are signed in to. They hold no personal information.</p>
+  <p>Where the extension gives moderators delete, timeout and ban buttons, it reads
+  your Kick login token from your browser only to make that one request to Kick, as
+  you, the way kick.com&rsquo;s own page does. The token is read per action, is never
+  stored, and never goes anywhere but Kick.</p>
 
   <h2>What BetterChat sends to us</h2>
-  <p>Nothing. Once the page has loaded it makes no further requests to
-  <code>betterchat.tech</code>. There is no usage reporting, telemetry or heartbeat.</p>
+  <p>Nothing at all, unless you agree to the viewer count. You are asked once, on your
+  first visit, and nothing is sent before you answer. Declining is a normal answer and
+  the chat works exactly the same either way. You can change your mind at any time
+  under <em>Overlay &amp; sharing</em> in the settings.</p>
+  <p>If you agree, the page sends a short message when it joins a channel, every five
+  minutes while it is open, and once as it closes. Each one contains:</p>
+  <ul>
+    <li>a random id for this browser tab, made up on the spot and forgotten when the
+      tab closes &mdash; it is not tied to you, your device or your other tabs;</li>
+    <li>the channel being watched;</li>
+    <li>how many chat messages went by since the last message we sent;</li>
+    <li>whether the page is embedded in kick.com or opened directly;</li>
+    <li>whether you are on the normal site or the test build.</li>
+  </ul>
+  <p>That is used for one thing: showing how many people are watching, and how busy
+  the channels are, on a board only the operator can see. There is no profile, no
+  history tied to you, and none of it is shared with anyone or used for advertising.
+  Nothing about your messages, your Kick account or your identity is included, because
+  the page never has any of it to send.</p>
+  <p>Like any web request, ours arrive with your IP address attached. It is used to
+  answer the request and is not stored with the count.</p>
 
   <h2>What your browser contacts directly</h2>
   <p>BetterChat shows Kick chat by talking to Kick from your own browser, exactly as a

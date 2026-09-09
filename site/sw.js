@@ -24,7 +24,7 @@
 // current one, so the numbers are for us, not for it.
 
 const MAJOR = 1;
-const MINOR = 1;
+const MINOR = 2;
 const VERSION = `v${MAJOR}.${MINOR}`;
 const CACHE = `betterchat-${VERSION}`;
 

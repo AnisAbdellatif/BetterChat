@@ -7,14 +7,13 @@ feed itself. A small Python server (FastAPI, run with uv) hands out the
 page and carries an admin board. One process, one hostname, published from
 a homelab through a Cloudflare Tunnel.
 
-**The page currently sends nothing back.** The heartbeats that fed the
-board's viewer counts were taken out of `site/app.js` while the browser
-extension goes through Chrome Web Store review - with no data leaving the
-page there is nothing to declare and no privacy policy to stand behind yet.
-Everything that received them (`POST /api/beat`, `betterchat/stats.py`,
-`/admin`) is still here and still tested, so restoring the feature means
-putting the sender back and nothing else. The paragraphs below describe it
-as it will work again.
+**The page sends nothing back unless the viewer agrees to it.** The
+heartbeats that feed the board's viewer counts are opt-in: the first visit
+asks, in as many words, and until it is answered nothing is sent. Either
+answer is remembered with the other settings and can be changed later under
+*Overlay & sharing*. A shared settings link or an exported file never carries
+it, so consent cannot be handed to anyone else - it is given in the viewer's
+own browser or not at all.
 
 This is the successor of the Elixir/Phoenix version (the `betterchat`
 repo), which relayed chat through a server. Kick's API answers cross-origin
@@ -86,14 +85,17 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
 - Badges: choose which badge kinds are shown, and drag them (or use each
   row's arrows) into the order they are drawn in next to usernames. Badges of
   the same kind keep Kick's own order within it.
-- Filters: hide messages a user repeats within a timespan (per user), collapse
-  an emote spammed back-to-back in one message, highlight messages that
-  @mention you.
+- Filters: act on messages a user repeats within a timespan (per user) -
+  either hide the repeat, or count it onto the copy already on screen as
+  `×2`, `×3` - collapse an emote spammed back-to-back in one message,
+  highlight messages that @mention you.
 - Events: what to do with deleted messages, which moderation / pin / sub /
   gift / host events to show, whether a pinned message starts collapsed, and
   a switch for the moderation controls (shown only where they work).
 - Overlay & sharing: fade-out time for the OBS overlay, copy an overlay or
-  settings link, export / import settings as JSON, reset.
+  settings link, export / import settings as JSON, reset, and the switch for
+  the anonymous viewer count (the same answer the first-visit banner asks
+  for).
 
 **Settings in the URL.** Any setting can be a query parameter
 (`/xqc?fontSize=16&monocolor=1&hiddenBadges=level,event`). URL settings
@@ -113,7 +115,7 @@ per-channel table. HTTP Basic Auth; a 404 until credentials are set.
  (channel, pin,              (kick.js +                 (chatrooms.<id>.v2,
   history, user)              app.js)                    channel.<id>)
                                  |
-              GET /<channel>     |     POST /api/beat  (sender removed for now)
+              GET /<channel>     |     POST /api/beat  (only if opted in)
                                  v
                         betterchat server (uv)  -->  GET /admin
 ```
@@ -140,8 +142,9 @@ per-channel table. HTTP Basic Auth; a 404 until credentials are set.
   and on shutdown.
 
 Every viewer holds their own connection to Kick, exactly like a kick.com tab
-does. Heartbeats were anonymous: a random per-tab id, the channel slug, a
-message count, and whether the page is embedded. "Viewers" means open tabs,
+does. Heartbeats are anonymous and opt-in: a random per-tab id, the channel
+slug, a message count, and whether the page is embedded. No IP is stored with
+them. "Viewers" means open tabs,
 not people; a tab that dies
 without a `leave` drops out after 7 minutes. Message counts on the board are
 the maximum any viewer of a channel reported per minute, which approximates
@@ -207,6 +210,7 @@ npm test             # kick.js: normalizers, API client (fake fetch), relay fram
 | `STATS_PATH` | Persisted stats file (default `data/stats.json`; `/app/data/stats.json` in Docker). |
 | `SITE_DIR` | The static site (default: `site/` in the repo). |
 | `FRAME_ANCESTORS` | CSP `frame-ancestors` for the site, e.g. `'self' https://kick.com`. Unset sends no header. |
+| `BEAT_ORIGINS` | Origins allowed to post heartbeats cross-origin, e.g. `https://dev.betterchat.tech`. Unset means same-origin only. |
 | `HOST`, `PORT` | Listen address (default `0.0.0.0:8010`). |
 
 ## Embedding it in kick.com
@@ -293,6 +297,63 @@ edited by hand the deploy stops and says so instead of inventing a merge
 commit on a server. Old image layers are pruned after every run, which on a
 small boot volume matters more than it sounds. The container restarts during
 the rebuild, so expect a few seconds of 502 through the tunnel.
+
+## Two branches, two instances
+
+`master` is stable and is the only thing that reaches `betterchat.tech`. Work
+happens on `dev`, which deploys to a **second instance on the same VPS** and
+cannot disturb the first one.
+
+They are separate in every way that matters: their own checkout, their own
+compose project, their own container, their own data volume, their own image
+tag and their own port. Nothing is shared but the host and the runner, and the
+runner takes one job at a time, so the two deploys cannot even overlap.
+
+One thing is deliberately shared: **the admin board**. The dev page posts its
+heartbeats to the stable origin rather than to its own instance, tagged
+`build: "dev"`, so a single board answers "who is watching" for both and shows
+the split. That needs `BEAT_ORIGINS=https://dev.betterchat.tech` in the stable
+`.env`; the dev instance leaves it empty, since nothing reports to dev. Dev
+viewers do count toward the shared totals, which is fine when dev is you
+testing and worth remembering if it ever gets busier.
+
+The image tag is the part that is easy to get wrong. With a fixed
+`betterchat:local`, a dev build would move the tag that production's *next*
+restart resolves, and production would quietly come back up running dev's
+code - days later, with nothing in the logs to say why. `IMAGE_TAG` in `.env`
+is what prevents that.
+
+Set the dev instance up once, beside the production one:
+
+```bash
+git clone https://github.com/AnisAbdellatif/BetterChat.git /opt/betterchat-dev
+cd /opt/betterchat-dev && git checkout dev
+cp .env.example .env
+```
+
+Then in that `.env` set `COMPOSE_PROJECT_NAME=betterchat-dev`, `IMAGE_TAG=dev`,
+`HOST_PORT=8011`, and its own `ADMIN_USER` / `ADMIN_PASSWORD`. Bring it up once
+by hand (`docker compose up -d --build`), point a second tunnel hostname such
+as `dev.betterchat.tech` at `http://localhost:8011`, and **put a Cloudflare
+Access policy in front of it** - a dev build should not be something strangers
+can find. If the clone goes somewhere else, set the repository variable
+`DEPLOY_DIR_DEV` to its path.
+
+After that, a push to `dev` deploys there. The deploy logic itself lives in
+one place, `_deploy.yml`, which both branches call with a different directory.
+Two differences between them are deliberate:
+
+- **Production waits for the tests, dev does not.** Dev is where half-finished
+  work goes to be tried in a real browser, and having to be green first would
+  defeat the point. Both still have to come up healthy, so a build that cannot
+  boot fails loudly either way.
+- **Each deploy checks the branch of the checkout it is about to touch** and
+  refuses if it does not match the branch that was pushed, so a mix-up in
+  `DEPLOY_DIR` cannot drag production onto `dev`.
+
+To point the extension at the dev instance, change `BCK_BASE_URL` in a local
+copy of `defaults.js` and load that copy unpacked. The origin is fixed in the
+extension on purpose, so there is no setting for it.
 
 ## Things to know
 

@@ -24,6 +24,12 @@
   // OBS overlay mode (?overlay=1): transparent, no controls, fading messages.
   const overlayMode = ['1', 'true', 'on'].includes((query.get('overlay') || '').toLowerCase());
 
+  // Embedded mode (?embed=1): this page is in an iframe on someone else's
+  // site - kick.com, in place of the official chat - rather than opened
+  // directly. Only the viewer count cares: it tells the board which viewers
+  // arrived through an embed.
+  const embedMode = ['1', 'true', 'on'].includes((query.get('embed') || '').toLowerCase());
+
   // Filled in from the join reply: the channel's own subscriber badge
   // images, one per months-tier, sorted by months ascending.
   let subscriberBadges = [];
@@ -66,6 +72,13 @@
   ]);
 
   const DELETED_MODES = Object.freeze(['gray', 'remove', 'keep']);
+  // What to do with a message the filter counts as a repeat: drop it, or add
+  // it to the copy already on screen as "xN".
+  const DEDUPE_MODES = Object.freeze(['hide', 'count']);
+  // The anonymous viewer count. "ask" is the state before the viewer has
+  // answered the banner, and is why this is not simply a boolean: a decline
+  // has to be distinguishable from a question not yet put.
+  const STATS_CHOICES = Object.freeze(['ask', 'on', 'off']);
   const TIMESTAMP_FORMATS = Object.freeze(['hm', 'hms']);
 
   // Shown next to the checkbox for each kind in the settings panel.
@@ -110,6 +123,8 @@
     dedupe: true,
     dedupeWindowSec: 5,
     dedupeRepeats: 1,
+    dedupeMode: 'hide',
+    stats: 'ask',
     collapseEmotes: true,
     deletedMessages: 'gray',
     showModeration: true,
@@ -193,6 +208,8 @@
       s.bgColor = raw.bgColor.toLowerCase();
     }
     s.deletedMessages = oneOf(raw.deletedMessages, DELETED_MODES, DEFAULTS.deletedMessages);
+    s.dedupeMode = oneOf(raw.dedupeMode, DEDUPE_MODES, DEFAULTS.dedupeMode);
+    s.stats = oneOf(raw.stats, STATS_CHOICES, DEFAULTS.stats);
     s.overlayFadeSec = clampInt(raw.overlayFadeSec, 0, 600, DEFAULTS.overlayFadeSec);
     return s;
   }
@@ -207,12 +224,22 @@
     }
   }
 
+  // Consent is not something a link can grant on someone else's behalf, so it
+  // stays out of the URL in both directions and out of an exported file. It
+  // changes by the banner or its own switch, in the viewer's own browser, or
+  // it does not change.
+  //
+  // Declared here rather than beside settingsAsParams below: settingsFromUrl
+  // runs while this file is still being evaluated, so anything it reads has
+  // to exist by this line.
+  const NOT_SHAREABLE = new Set(['stats']);
+
   // Settings in the URL: ?fontSize=16&monocolor=1&hiddenBadges=level,event
   // Booleans accept 1/0/true/false/on/off, arrays are comma-separated.
   function settingsFromUrl() {
     const out = {};
     for (const key of Object.keys(DEFAULTS)) {
-      if (!query.has(key)) continue;
+      if (NOT_SHAREABLE.has(key) || !query.has(key)) continue;
       const v = query.get(key);
       const kind = Array.isArray(DEFAULTS[key]) ? 'array' : typeof DEFAULTS[key];
       if (kind === 'boolean') out[key] = ['1', 'true', 'on'].includes(v.toLowerCase());
@@ -242,6 +269,7 @@
   function settingsAsParams(target) {
     const params = new URLSearchParams();
     for (const key of Object.keys(DEFAULTS)) {
+      if (NOT_SHAREABLE.has(key)) continue;
       const value = target[key];
       if (JSON.stringify(value) === JSON.stringify(DEFAULTS[key])) continue;
       if (typeof value === 'boolean') params.set(key, value ? '1' : '0');
@@ -312,6 +340,8 @@
     }
     applyPinVisibility();
     applyModerationState();
+    applyBeats();
+    showConsentIfUnanswered();
   }
 
   // The pin banner changes the list's height, so showing or hiding it has to
@@ -517,6 +547,10 @@
     }
     // Rebuilds the rows, which also sets each checkbox from the settings.
     buildBadgeList();
+    // A checkbox against a three-state value: "ask" reads as off, and the
+    // banner is what turns it into a real answer.
+    const statsEl = panel.querySelector('[data-stats]');
+    if (statsEl) statsEl.checked = settings.stats === 'on';
     for (const sub of panel.querySelectorAll('[data-sub]')) {
       sub.hidden = !settings[sub.dataset.sub];
     }
@@ -553,6 +587,12 @@
     if (el.dataset.badge) {
       const hidden = badgeChecks().filter((c) => !c.checked).map((c) => c.dataset.badge);
       replaceSettings({ ...settings, hiddenBadges: hidden });
+      return;
+    }
+
+    if (el.hasAttribute('data-stats')) {
+      // Either way this is an answer, so the banner has nothing left to ask.
+      replaceSettings({ ...settings, stats: el.checked ? 'on' : 'off' });
       return;
     }
 
@@ -608,7 +648,9 @@
   });
 
   document.getElementById('exportSettings').addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify(settings, null, 2)], { type: 'application/json' });
+    const shareable = { ...settings };
+    for (const key of NOT_SHAREABLE) delete shareable[key];
+    const blob = new Blob([JSON.stringify(shareable, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -631,7 +673,8 @@
     try {
       const raw = JSON.parse(await file.text());
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('not an object');
-      replaceSettings(raw);
+      // An imported file never speaks for the viewer on consent.
+      replaceSettings({ ...raw, stats: settings.stats });
       note('Settings imported.');
     } catch (_e) {
       note('That file is not a valid settings export.', true);
@@ -640,7 +683,8 @@
 
   document.getElementById('resetSettings').addEventListener('click', () => {
     if (!window.confirm('Reset all chat settings to their defaults?')) return;
-    replaceSettings({});
+    // Same rule: resetting the look of the chat is not a privacy decision.
+    replaceSettings({ stats: settings.stats });
     note('Settings reset.');
   });
 
@@ -812,17 +856,28 @@
     return content.trim().replace(/\s+/g, ' ').toLowerCase();
   }
 
+  // The row currently standing for each key, so a repeat can be counted onto
+  // it instead of dropped. Kept in step with recentMessages by the prune
+  // below, so it cannot outgrow the window either.
+  const repeatRows = new Map(); // key -> the .msg element showing it
+
   function pruneRecent(now, windowMs) {
     for (const [key, times] of recentMessages) {
       const kept = times.filter((t) => now - t <= windowMs);
-      if (kept.length) recentMessages.set(key, kept);
-      else recentMessages.delete(key);
+      if (kept.length) {
+        recentMessages.set(key, kept);
+      } else {
+        recentMessages.delete(key);
+        repeatRows.delete(key);
+      }
     }
   }
 
-  // Returns true when the message should be hidden. Always records the
-  // message, so turning the option on mid-stream already has history.
-  function isRepeat(username, content) {
+  // Records the message and says whether it counts as a repeat. The key comes
+  // back either way, so the row that is drawn can be registered as the one a
+  // later repeat counts onto. Recording happens even with the filter off, so
+  // turning it on mid-stream already has history.
+  function repeatState(username, content) {
     const now = Date.now();
     const windowMs = settings.dedupeWindowSec * 1000;
     if (now - lastPrune > 5000) {
@@ -831,14 +886,41 @@
     }
 
     const text = normalizeContent(content);
-    if (!text) return false;
+    if (!text) return { key: null, repeat: false };
     const key = `${(username || '').toLowerCase()}\n${text}`;
     const times = (recentMessages.get(key) || []).filter((t) => now - t <= windowMs);
     const seenBefore = times.length;
     times.push(now);
     recentMessages.set(key, times);
 
-    return settings.dedupe && seenBefore >= settings.dedupeRepeats;
+    return { key, repeat: settings.dedupe && seenBefore >= settings.dedupeRepeats };
+  }
+
+  // Adds this repeat to the copy already on screen. False when there is no
+  // such copy any more - trimmed out of history, say - and the caller should
+  // just draw the message instead.
+  function countRepeat(key) {
+    const row = key ? repeatRows.get(key) : null;
+    if (!row || !row.isConnected) {
+      if (key) repeatRows.delete(key);
+      return false;
+    }
+
+    const total = Number(row.dataset.repeats || 1) + 1;
+    row.dataset.repeats = String(total);
+
+    let tag = row.querySelector('.repeat-count');
+    if (!tag) {
+      tag = el('span', 'repeat-count');
+      // In front of the message itself, after any timestamp.
+      const anchor = row.querySelector('.badges') || row.querySelector('.user');
+      row.insertBefore(tag, anchor || null);
+    }
+    tag.textContent = `×${total}`;
+    // "copies", not "posted N times": with an allowance above one, earlier
+    // copies got rows of their own and this counts the ones folded into this.
+    tag.title = `${total} copies`;
+    return true;
   }
 
   // ---------------------------------------------------------------------
@@ -1269,7 +1351,10 @@
     // Collapse first so the repeat filter compares what would be displayed:
     // "KEKW KEKW KEKW" and "KEKW KEKW" are the same message once collapsed.
     const content = settings.collapseEmotes ? collapseRepeatedEmotes(msg.content) : msg.content;
-    if (isRepeat(msg.username, content)) return;
+    const { key: repeatKey, repeat } = repeatState(msg.username, content);
+    // In "count" mode a repeat is added to the message already on screen; if
+    // that message is gone, countRepeat says so and this one is drawn fresh.
+    if (repeat && (settings.dedupeMode !== 'count' || countRepeat(repeatKey))) return;
 
     const row = document.createElement('div');
     row.className = 'msg';
@@ -1314,6 +1399,11 @@
     // Only where it can actually work, so ordinary viewers carry no extra
     // node per message. CSS reveals it on hover.
     if (modEnabled()) row.appendChild(deleteButton());
+
+    // This row now stands for the key, so a later repeat counts onto it.
+    // Registered whatever the mode is, so switching to counting mid-stream
+    // works on the messages already there.
+    if (repeatKey) repeatRows.set(repeatKey, row);
 
     appendRow(row);
   }
@@ -2047,16 +2137,121 @@
   }
 
   // ---------------------------------------------------------------------
-  // This page sends nothing to its own server. The heartbeats that fed the
-  // admin board's viewer counts are gone while the extension goes through
-  // Chrome Web Store review: with no data leaving the page there is nothing
-  // to disclose and no privacy policy to stand behind yet.
+  // Heartbeats for the admin board's viewer count, sent to the server this
+  // page came from (betterchat/main.py). Opt-in: nothing is sent until the
+  // viewer has answered the banner, and one word from them stops it again.
   //
-  // The server side is untouched - /api/beat, betterchat/stats.py and the
-  // board all still exist - so restoring this means putting the sender back
-  // and nothing else. It sent a random per-tab id, the channel slug, a
-  // message count, and whether the page was embedded (?embed=1).
+  // What goes out is a random per-tab id, the channel, how many messages this
+  // tab saw since its last beat, and whether it is an embed. No account, no
+  // cookies, nothing identifying. The URL is relative on purpose - in an
+  // iframe it still resolves to this server, not to the site doing the
+  // embedding. Sent as text/plain so neither the keepalive fetch nor
+  // sendBeacon needs a preflight.
   // ---------------------------------------------------------------------
+
+  const BEAT_INTERVAL_MS = 5 * 60 * 1000;
+  // Which deployment this is. The dev instance reports to the stable board
+  // rather than keeping one of its own, so a single board answers "who is
+  // watching" for both, with the split shown there.
+  const STABLE_ORIGIN = 'https://betterchat.tech';
+  const buildName = location.hostname.startsWith('dev.') ? 'dev' : 'stable';
+  // Relative for stable, on purpose: inside an iframe it still resolves to
+  // this server rather than to the site doing the embedding. Dev is the one
+  // case that has to name where it is going.
+  const BEAT_URL = buildName === 'dev' ? STABLE_ORIGIN + '/api/beat' : '/api/beat';
+  // Overlay mode is the streamer's own OBS source, not a viewer, and a page
+  // opened from a file or another static server has no /api/beat to talk to.
+  const beatsPossible = /^https?:$/.test(location.protocol) && !overlayMode;
+  let messagesSinceBeat = 0;
+  let beatTimer = null;
+  let beatChannel = null;
+  // Resolved once. sessionStorage can be unavailable (an embed in a browser
+  // that blocks third-party storage), and re-rolling the id on the fallback
+  // path would make every beat look like another viewer joining.
+  let cachedTabId = null;
+
+  function beatsWanted() {
+    return beatsPossible && settings.stats === 'on';
+  }
+
+  function tabId() {
+    if (cachedTabId) return cachedTabId;
+    try {
+      let id = sessionStorage.getItem('betterchat.tab');
+      if (!id || !/^[a-z0-9-]{8,64}$/.test(id)) {
+        const bytes = new Uint8Array(12);
+        crypto.getRandomValues(bytes);
+        id = 'tab-' + Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+        sessionStorage.setItem('betterchat.tab', id);
+      }
+      cachedTabId = id;
+    } catch (_e) {
+      cachedTabId = 'tab-' + Math.random().toString(16).slice(2, 14).padEnd(12, '0');
+    }
+    return cachedTabId;
+  }
+
+  // Callers decide whether a beat is allowed; this only sends one. That is
+  // what lets opting out send its parting "leave" after the answer changed.
+  function sendBeat(channelSlug, event) {
+    const body = JSON.stringify({
+      tab: tabId(),
+      channel: channelSlug,
+      event,
+      messages: messagesSinceBeat,
+      source: embedMode ? 'embed' : 'site',
+      build: buildName,
+    });
+    messagesSinceBeat = 0;
+    const url = BEAT_URL;
+    if (event === 'leave' && navigator.sendBeacon) {
+      navigator.sendBeacon(url, body); // a string body is sent as text/plain
+      return;
+    }
+    fetch(url, { method: 'POST', body, keepalive: true, headers: { 'content-type': 'text/plain' } }).catch(() => {});
+  }
+
+  // Starts, stops, or leaves things alone, from the current answer. Called on
+  // connect and again whenever the settings change.
+  function applyBeats() {
+    const wanted = beatsWanted() && !!beatChannel;
+    if (wanted && !beatTimer) {
+      sendBeat(beatChannel, 'join');
+      beatTimer = setInterval(() => sendBeat(beatChannel, 'beat'), BEAT_INTERVAL_MS);
+    } else if (!wanted && beatTimer) {
+      clearInterval(beatTimer);
+      beatTimer = null;
+      // Say goodbye so opting out drops this tab from the count now, rather
+      // than leaving it there until the session times out.
+      if (beatChannel) sendBeat(beatChannel, 'leave');
+    }
+  }
+
+  function startBeats(channelSlug) {
+    beatChannel = channelSlug;
+    applyBeats();
+  }
+
+  window.addEventListener('pagehide', () => {
+    if (beatTimer && beatChannel) sendBeat(beatChannel, 'leave');
+  });
+
+  // ---- The consent banner ---------------------------------------------
+
+  const consentEl = document.getElementById('consent');
+
+  function answerConsent(answer) {
+    consentEl.hidden = true;
+    replaceSettings({ ...settings, stats: answer });
+  }
+
+  document.getElementById('consentYes').addEventListener('click', () => answerConsent('on'));
+  document.getElementById('consentNo').addEventListener('click', () => answerConsent('off'));
+
+  function showConsentIfUnanswered() {
+    // Nothing to ask about where nothing could be sent anyway.
+    consentEl.hidden = !(beatsPossible && settings.stats === 'ask');
+  }
 
   // Refreshes the pin from Kick's history endpoint (used on connect and
   // after a reconnect, when a pin may have come or gone unnoticed).
@@ -2100,6 +2295,7 @@
       channelId: info.channel_id,
       onMessage: (msg) => {
         if (notSeenBefore(msg)) {
+          messagesSinceBeat++;
           appendMessage(msg);
         }
       },
@@ -2121,6 +2317,7 @@
           }
           // After a drop, a pin may have changed while we weren't listening.
           if (rejoin) refreshPinAndHistory(info.channel_id, false);
+          else startBeats(info.slug);
         }
         updateStatus();
       },

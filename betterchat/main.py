@@ -34,7 +34,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
-from .stats import VALID_EVENTS, VALID_SOURCES, Stats
+from .stats import VALID_BUILDS, VALID_EVENTS, VALID_SOURCES, Stats
 
 log = logging.getLogger("betterchat")
 
@@ -123,6 +123,16 @@ def create_app(stats: Stats | None = None, sample_loop: bool = True) -> FastAPI:
 
     # ------------------------------------------------------------ heartbeat --
 
+    # Origins allowed to post heartbeats cross-origin, so the dev deployment
+    # can report to this board instead of keeping its own. Space or comma
+    # separated, e.g. BEAT_ORIGINS="https://dev.betterchat.tech". Unset means
+    # same-origin only, which is what a lone instance wants.
+    beat_origins = {
+        o for o in os.environ.get("BEAT_ORIGINS", "").replace(",", " ").split() if o
+    }
+    if beat_origins:
+        log.info("accepting heartbeats from %s", ", ".join(sorted(beat_origins)))
+
     @app.post("/api/beat", status_code=status.HTTP_204_NO_CONTENT)
     async def beat(request: Request) -> Response:
         # The page sends text/plain (sendBeacon / keepalive fetch need no
@@ -141,21 +151,30 @@ def create_app(stats: Stats | None = None, sample_loop: bool = True) -> FastAPI:
         channel = str(payload.get("channel", "")).lower()
         event = str(payload.get("event", ""))
         messages = payload.get("messages", 0)
-        # Absent on beats from an older cached page; those are plain site tabs.
+        # Absent on beats from an older cached page; those are plain site tabs
+        # on the stable build.
         source = str(payload.get("source", "site")) or "site"
+        build = str(payload.get("build", "stable")) or "stable"
         if (
             not TAB_RE.match(tab)
             or not SLUG_RE.match(channel)
             or event not in VALID_EVENTS
             or source not in VALID_SOURCES
+            or build not in VALID_BUILDS
         ):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid heartbeat")
         if not isinstance(messages, int) or isinstance(messages, bool):
             messages = 0
         messages = max(0, min(messages, MAX_MESSAGES_PER_BEAT))
 
-        stats.beat(tab, channel, event, messages, source)
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        stats.beat(tab, channel, event, messages, source, build)
+        # The dev instance's page posts here rather than to its own board, so
+        # one board answers for both. A text/plain POST is a CORS-simple
+        # request and is delivered either way; naming the origin back only
+        # spares the dev console a rejected-response error every five minutes.
+        origin = request.headers.get("origin", "")
+        headers = {"Access-Control-Allow-Origin": origin} if origin in beat_origins else {}
+        return Response(status_code=status.HTTP_204_NO_CONTENT, headers=headers)
 
     # ---------------------------------------------------------------- admin --
 
