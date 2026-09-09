@@ -7,14 +7,13 @@ feed itself. A small Python server (FastAPI, run with uv) hands out the
 page and carries an admin board. One process, one hostname, published from
 a homelab through a Cloudflare Tunnel.
 
-**The page currently sends nothing back.** The heartbeats that fed the
-board's viewer counts were taken out of `site/app.js` while the browser
-extension goes through Chrome Web Store review - with no data leaving the
-page there is nothing to declare and no privacy policy to stand behind yet.
-Everything that received them (`POST /api/beat`, `betterchat/stats.py`,
-`/admin`) is still here and still tested, so restoring the feature means
-putting the sender back and nothing else. The paragraphs below describe it
-as it will work again.
+**The page sends nothing back unless the viewer agrees to it.** The
+heartbeats that feed the board's viewer counts are opt-in: the first visit
+asks, in as many words, and until it is answered nothing is sent. Either
+answer is remembered with the other settings and can be changed later under
+*Overlay & sharing*. A shared settings link or an exported file never carries
+it, so consent cannot be handed to anyone else - it is given in the viewer's
+own browser or not at all.
 
 This is the successor of the Elixir/Phoenix version (the `betterchat`
 repo), which relayed chat through a server. Kick's API answers cross-origin
@@ -94,7 +93,9 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
   gift / host events to show, whether a pinned message starts collapsed, and
   a switch for the moderation controls (shown only where they work).
 - Overlay & sharing: fade-out time for the OBS overlay, copy an overlay or
-  settings link, export / import settings as JSON, reset.
+  settings link, export / import settings as JSON, reset, and the switch for
+  the anonymous viewer count (the same answer the first-visit banner asks
+  for).
 
 **Settings in the URL.** Any setting can be a query parameter
 (`/xqc?fontSize=16&monocolor=1&hiddenBadges=level,event`). URL settings
@@ -114,7 +115,7 @@ per-channel table. HTTP Basic Auth; a 404 until credentials are set.
  (channel, pin,              (kick.js +                 (chatrooms.<id>.v2,
   history, user)              app.js)                    channel.<id>)
                                  |
-              GET /<channel>     |     POST /api/beat  (sender removed for now)
+              GET /<channel>     |     POST /api/beat  (only if opted in)
                                  v
                         betterchat server (uv)  -->  GET /admin
 ```
@@ -141,8 +142,9 @@ per-channel table. HTTP Basic Auth; a 404 until credentials are set.
   and on shutdown.
 
 Every viewer holds their own connection to Kick, exactly like a kick.com tab
-does. Heartbeats were anonymous: a random per-tab id, the channel slug, a
-message count, and whether the page is embedded. "Viewers" means open tabs,
+does. Heartbeats are anonymous and opt-in: a random per-tab id, the channel
+slug, a message count, and whether the page is embedded. No IP is stored with
+them. "Viewers" means open tabs,
 not people; a tab that dies
 without a `leave` drops out after 7 minutes. Message counts on the board are
 the maximum any viewer of a channel reported per minute, which approximates

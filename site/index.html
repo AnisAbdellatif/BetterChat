@@ -357,6 +357,51 @@
   }
   #closePin:hover { color: #efeff1; }
 
+  /* First-visit consent for the anonymous viewer count. Nothing is sent
+     until this is answered, so it is deliberately in the way. */
+  #consent {
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    z-index: 8;
+    box-sizing: border-box;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: #1b2126;
+    border: 1px solid #2f3a41;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  }
+  /* display:flex above would otherwise beat the browser's [hidden] rule. */
+  #consent[hidden] { display: none; }
+  body.overlay #consent { display: none; }
+  .consent-text { flex: 1 1 220px; min-width: 0; }
+  .consent-text strong { display: block; margin-bottom: 3px; font-size: 13px; }
+  .consent-text p { margin: 0; color: #adadb8; font-size: 12px; line-height: 1.45; }
+  .consent-text a { color: #53fc18; }
+  .consent-actions { display: flex; gap: 6px; margin-left: auto; }
+  .consent-actions button {
+    background: #1f2429;
+    border: 1px solid #33373b;
+    color: #d3d3d8;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .consent-actions button:hover { border-color: #53fc18; color: #efeff1; }
+  .consent-actions button.primary {
+    background: #53fc18;
+    border-color: #53fc18;
+    color: #0e0f11;
+    font-weight: 600;
+  }
+
   /* Connection / stream status pill (bottom center) */
   #statusPill {
     position: fixed;
@@ -695,6 +740,21 @@
 
   <div id="statusPill" hidden role="status" aria-live="polite"></div>
 
+  <!-- Asked once, on the first visit. Until it is answered nothing is sent. -->
+  <div id="consent" hidden role="dialog" aria-labelledby="consentTitle" aria-describedby="consentText">
+    <div class="consent-text">
+      <strong id="consentTitle">Count this tab?</strong>
+      <p id="consentText">BetterChat can show how many people are watching. That means
+        sending a random id for this tab, the channel name, and how many messages went
+        by. No account, no cookies, nothing about you, and nothing shared with anyone.
+        <a href="/privacy" target="_blank" rel="noopener">Privacy</a></p>
+    </div>
+    <div class="consent-actions">
+      <button id="consentYes" type="button" class="primary">Count me</button>
+      <button id="consentNo" type="button">No thanks</button>
+    </div>
+  </div>
+
   <div id="replyTip" hidden role="tooltip"></div>
 
   <button id="settingsBtn" type="button" title="Settings" aria-label="Settings">
@@ -936,6 +996,20 @@
           </div>
           <input id="importFile" type="file" accept="application/json,.json" hidden />
           <div id="actionNote"></div>
+        </div>
+
+        <div class="setting">
+          <div class="section-title">Anonymous viewer count</div>
+          <div class="section-desc">
+            Lets BetterChat show how many people are watching. It sends a random
+            id for this tab, the channel name, and how many messages went by. No
+            account, no cookies, nothing about you, and nothing shared with
+            anyone. <a href="/privacy" target="_blank" rel="noopener">Privacy</a>.
+          </div>
+          <label class="toggle-row" style="margin-top: 8px">
+            <span><span class="label">Count this tab</span></span>
+            <input type="checkbox" data-stats /><span class="switch"></span>
+          </label>
         </div>
       </div>
     </div>
