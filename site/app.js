@@ -87,8 +87,13 @@
 
   const DEFAULTS = Object.freeze({
     hiddenBadges: ['level'],
-    // The order badges are drawn in, left to right. Defaults to Kick's own.
-    badgeOrder: [...BADGE_KINDS],
+    // The order badges are drawn in, left to right. Not Kick's own order:
+    // rank first, then the flavour badges. Must name every kind in
+    // BADGE_KINDS - sanitize appends any that are missing.
+    badgeOrder: [
+      'level', 'broadcaster', 'staff', 'moderator', 'founder', 'og', 'vip',
+      'subscriber', 'verified', 'event', 'other', 'sub_gifter', 'bot',
+    ],
     fontSize: 20,
     fontFamily: 'mono',
     customFont: '',
@@ -154,18 +159,19 @@
     // simply junk from a hand-edited URL, so rebuild it as a real permutation
     // of BADGE_KINDS: the kinds it names, in its order, then whatever it left
     // out in the default order. Always a fresh array - DEFAULTS is shared.
-    const savedOrder = Array.isArray(raw.badgeOrder) ? raw.badgeOrder : [];
     const placed = new Set();
     const order = [];
-    for (const kind of savedOrder) {
-      if (BADGE_KINDS.includes(kind) && !placed.has(kind)) {
-        placed.add(kind);
-        order.push(kind);
+    const take = (kinds) => {
+      for (const kind of kinds) {
+        if (BADGE_KINDS.includes(kind) && !placed.has(kind)) {
+          placed.add(kind);
+          order.push(kind);
+        }
       }
-    }
-    for (const kind of BADGE_KINDS) {
-      if (!placed.has(kind)) order.push(kind);
-    }
+    };
+    take(Array.isArray(raw.badgeOrder) ? raw.badgeOrder : []);
+    take(DEFAULTS.badgeOrder);
+    take(BADGE_KINDS); // backstop, in case a kind is missing from the default
     s.badgeOrder = order;
     s.fontSize = clampInt(raw.fontSize, 8, 40, DEFAULTS.fontSize);
     s.messageGap = clampInt(raw.messageGap, 0, 40, DEFAULTS.messageGap);
