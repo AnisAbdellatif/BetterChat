@@ -68,8 +68,27 @@
   const DELETED_MODES = Object.freeze(['gray', 'remove', 'keep']);
   const TIMESTAMP_FORMATS = Object.freeze(['hm', 'hms']);
 
+  // Shown next to the checkbox for each kind in the settings panel.
+  const BADGE_LABELS = Object.freeze({
+    broadcaster: 'Broadcaster',
+    staff: 'Kick staff',
+    moderator: 'Moderator',
+    verified: 'Verified',
+    founder: 'Founder',
+    og: 'OG',
+    vip: 'VIP',
+    sub_gifter: 'Sub gifter',
+    subscriber: 'Subscriber',
+    bot: 'Bot',
+    level: 'Chat level',
+    event: 'Event / other Kick badges',
+    other: 'Unknown badge types',
+  });
+
   const DEFAULTS = Object.freeze({
     hiddenBadges: ['level'],
+    // The order badges are drawn in, left to right. Defaults to Kick's own.
+    badgeOrder: [...BADGE_KINDS],
     fontSize: 20,
     fontFamily: 'mono',
     customFont: '',
@@ -131,6 +150,23 @@
     if (Array.isArray(raw.hiddenBadges)) {
       s.hiddenBadges = BADGE_KINDS.filter((kind) => raw.hiddenBadges.includes(kind));
     }
+    // A stored order can be stale (a kind added since it was saved), short, or
+    // simply junk from a hand-edited URL, so rebuild it as a real permutation
+    // of BADGE_KINDS: the kinds it names, in its order, then whatever it left
+    // out in the default order. Always a fresh array - DEFAULTS is shared.
+    const savedOrder = Array.isArray(raw.badgeOrder) ? raw.badgeOrder : [];
+    const placed = new Set();
+    const order = [];
+    for (const kind of savedOrder) {
+      if (BADGE_KINDS.includes(kind) && !placed.has(kind)) {
+        placed.add(kind);
+        order.push(kind);
+      }
+    }
+    for (const kind of BADGE_KINDS) {
+      if (!placed.has(kind)) order.push(kind);
+    }
+    s.badgeOrder = order;
     s.fontSize = clampInt(raw.fontSize, 8, 40, DEFAULTS.fontSize);
     s.messageGap = clampInt(raw.messageGap, 0, 40, DEFAULTS.messageGap);
     if (raw.fontFamily === 'custom' || FONT_STACKS[raw.fontFamily]) s.fontFamily = raw.fontFamily;
@@ -255,6 +291,9 @@
     for (const badge of messagesEl.querySelectorAll('.badge[data-kind]')) {
       badge.toggleAttribute('hidden', isBadgeHidden(badge.dataset.kind));
     }
+    for (const wrap of messagesEl.querySelectorAll('.badges')) {
+      sortBadgeWrap(wrap);
+    }
     for (const ts of messagesEl.querySelectorAll('.ts[data-time]')) {
       ts.textContent = formatTime(ts.dataset.time);
     }
@@ -287,7 +326,177 @@
   const settingsBtn = document.getElementById('settingsBtn');
   const actionNote = document.getElementById('actionNote');
   const controls = [...panel.querySelectorAll('[data-setting]')];
-  const badgeChecks = [...panel.querySelectorAll('[data-badge]')];
+  // ---------------------------------------------------------------------
+  // Badge list: which kinds are shown, and the order they are drawn in.
+  //
+  // One list does both jobs - the checkbox shows or hides a kind, the row's
+  // position is its place next to usernames. Rows are built from
+  // settings.badgeOrder rather than written out in the HTML, so the order is
+  // the single source of truth and there is nothing to keep in sync by hand.
+  // ---------------------------------------------------------------------
+
+  const badgeList = document.getElementById('badgeList');
+
+  function badgeChecks() {
+    return [...badgeList.querySelectorAll('[data-badge]')];
+  }
+
+  function badgeLabel(kind) {
+    return BADGE_LABELS[kind] || kind;
+  }
+
+  // Rebuilding replaces the row the viewer was using, so where the keyboard
+  // was is noted first and put back afterwards.
+  function currentBadgeFocus() {
+    const active = document.activeElement;
+    const row = active && active.closest ? active.closest('.badge-row') : null;
+    if (!row) return null;
+    if (active.dataset.move) return { kind: row.dataset.kind, move: active.dataset.move };
+    if (active.dataset.badge) return { kind: row.dataset.kind, check: true };
+    return null;
+  }
+
+  function restoreBadgeFocus(target) {
+    if (!target) return;
+    const row = badgeList.querySelector(`.badge-row[data-kind="${target.kind}"]`);
+    if (!row) return;
+    if (target.check) {
+      const check = row.querySelector('[data-badge]');
+      if (check) check.focus();
+      return;
+    }
+    const same = row.querySelector(`[data-move="${target.move}"]`);
+    if (same && !same.disabled) {
+      same.focus();
+      return;
+    }
+    // The row reached an end and that arrow is disabled now; the other one is
+    // where the keyboard should land.
+    const other = row.querySelector('[data-move]:not(:disabled)');
+    if (other) other.focus();
+  }
+
+  function moveButton(kind, delta, glyph, name, disabled) {
+    const btn = el('button', 'badge-move', glyph);
+    btn.type = 'button';
+    btn.dataset.move = name;
+    btn.disabled = disabled;
+    btn.setAttribute('aria-label', `Move ${badgeLabel(kind)} ${name}`);
+    btn.addEventListener('click', () => moveBadge(kind, delta));
+    return btn;
+  }
+
+  function buildBadgeList() {
+    const focus = currentBadgeFocus();
+    const last = settings.badgeOrder.length - 1;
+    badgeList.replaceChildren();
+
+    settings.badgeOrder.forEach((kind, at) => {
+      const row = el('div', 'badge-row');
+      row.dataset.kind = kind;
+      row.draggable = true;
+
+      const grip = el('span', 'badge-grip', '⠿');
+      grip.setAttribute('aria-hidden', 'true');
+      row.appendChild(grip);
+
+      const label = document.createElement('label');
+      const check = document.createElement('input');
+      check.type = 'checkbox';
+      check.dataset.badge = kind;
+      check.checked = !isBadgeHidden(kind);
+      label.appendChild(check);
+      label.append(badgeLabel(kind));
+      row.appendChild(label);
+
+      row.appendChild(moveButton(kind, -1, '↑', 'up', at === 0));
+      row.appendChild(moveButton(kind, 1, '↓', 'down', at === last));
+
+      badgeList.appendChild(row);
+    });
+
+    restoreBadgeFocus(focus);
+  }
+
+  function moveBadge(kind, delta) {
+    const order = [...settings.badgeOrder];
+    const from = order.indexOf(kind);
+    const to = from + delta;
+    if (from === -1 || to < 0 || to >= order.length) return;
+    order[from] = order[to];
+    order[to] = kind;
+    replaceSettings({ ...settings, badgeOrder: order });
+  }
+
+  function dropBadge(kind, onto, after) {
+    if (!kind || kind === onto) return;
+    const order = settings.badgeOrder.filter((k) => k !== kind);
+    let at = order.indexOf(onto);
+    if (at === -1) return;
+    if (after) at += 1;
+    order.splice(at, 0, kind);
+    replaceSettings({ ...settings, badgeOrder: order });
+  }
+
+  // Drag and drop. Listeners sit on the list, not the rows, so they survive
+  // every rebuild.
+  let draggingKind = null;
+
+  function clearDropHints() {
+    for (const row of badgeList.querySelectorAll('.badge-row')) {
+      row.classList.remove('drop-before', 'drop-after');
+    }
+  }
+
+  function dropsAfter(row, event) {
+    const box = row.getBoundingClientRect();
+    return event.clientY > box.top + box.height / 2;
+  }
+
+  badgeList.addEventListener('dragstart', (e) => {
+    const row = e.target.closest('.badge-row');
+    if (!row) return;
+    draggingKind = row.dataset.kind;
+    row.classList.add('dragging');
+    if (!e.dataTransfer) return;
+    e.dataTransfer.effectAllowed = 'move';
+    // Firefox will not start a drag with an empty transfer.
+    try {
+      e.dataTransfer.setData('text/plain', draggingKind);
+    } catch (_e) {
+      /* not fatal - the kind is held in draggingKind anyway */
+    }
+  });
+
+  badgeList.addEventListener('dragover', (e) => {
+    if (!draggingKind) return;
+    const row = e.target.closest('.badge-row');
+    if (!row) return;
+    e.preventDefault(); // without this the drop is refused
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    clearDropHints();
+    if (row.dataset.kind === draggingKind) return;
+    row.classList.add(dropsAfter(row, e) ? 'drop-after' : 'drop-before');
+  });
+
+  badgeList.addEventListener('drop', (e) => {
+    if (!draggingKind) return;
+    e.preventDefault();
+    const row = e.target.closest('.badge-row');
+    const kind = draggingKind;
+    draggingKind = null;
+    clearDropHints();
+    if (row) dropBadge(kind, row.dataset.kind, dropsAfter(row, e));
+  });
+
+  // Runs when a drag ends anywhere, including outside the list.
+  badgeList.addEventListener('dragend', () => {
+    draggingKind = null;
+    clearDropHints();
+    for (const row of badgeList.querySelectorAll('.dragging')) {
+      row.classList.remove('dragging');
+    }
+  });
 
   function syncPanel() {
     for (const el of controls) {
@@ -295,9 +504,8 @@
       if (el.type === 'checkbox') el.checked = value;
       else el.value = value;
     }
-    for (const el of badgeChecks) {
-      el.checked = !isBadgeHidden(el.dataset.badge);
-    }
+    // Rebuilds the rows, which also sets each checkbox from the settings.
+    buildBadgeList();
     for (const sub of panel.querySelectorAll('[data-sub]')) {
       sub.hidden = !settings[sub.dataset.sub];
     }
@@ -332,7 +540,7 @@
     const el = e.target;
 
     if (el.dataset.badge) {
-      const hidden = badgeChecks.filter((c) => !c.checked).map((c) => c.dataset.badge);
+      const hidden = badgeChecks().filter((c) => !c.checked).map((c) => c.dataset.badge);
       replaceSettings({ ...settings, hiddenBadges: hidden });
       return;
     }
@@ -557,6 +765,8 @@
       if (typeof part === 'string') {
         row.appendChild(document.createTextNode(part));
       } else if (part && part.user) {
+        // Kick named this person, so the name is real whatever chat types.
+        noteUser(part.user);
         const u = document.createElement('span');
         u.className = 'user';
         u.textContent = part.user;
@@ -789,17 +999,38 @@
     wrap.appendChild(el);
   }
 
+  // Position of a kind in the viewer's order; anything unknown goes last.
+  function badgeRank(kind) {
+    const at = settings.badgeOrder.indexOf(kind);
+    return at === -1 ? BADGE_KINDS.length : at;
+  }
+
   function renderBadges(msg) {
     const wrap = document.createElement('span');
     wrap.className = 'badges';
     const bySort = (a, b) => (a.sort_order || 0) - (b.sort_order || 0);
+    const items = [];
     for (const b of (msg.badges || []).slice().sort(bySort)) {
-      addBadge(wrap, renderChannelBadge(b), channelBadgeKind(b));
+      items.push({ el: renderChannelBadge(b), kind: channelBadgeKind(b) });
     }
     for (const b of (msg.badges_v2 || []).slice().sort(bySort)) {
-      addBadge(wrap, renderGlobalBadge(b), globalBadgeKind(b));
+      items.push({ el: renderGlobalBadge(b), kind: globalBadgeKind(b) });
     }
+    // Sort is stable, so two badges of the same kind keep Kick's own order.
+    items.sort((a, b) => badgeRank(a.kind) - badgeRank(b.kind));
+    for (const item of items) addBadge(wrap, item.el, item.kind);
     return wrap;
+  }
+
+  // Re-orders the badges already on screen when the setting changes, so it
+  // does not only apply to messages that arrive next.
+  function sortBadgeWrap(wrap) {
+    const current = [...wrap.children];
+    if (current.length < 2) return;
+    const ranked = current.map((node, at) => ({ node, at, rank: badgeRank(node.dataset.kind) }));
+    ranked.sort((a, b) => a.rank - b.rank || a.at - b.at);
+    if (ranked.every((item, at) => item.node === current[at])) return;
+    wrap.append(...ranked.map((item) => item.node));
   }
 
   // ---------------------------------------------------------------------
@@ -835,7 +1066,105 @@
     return false;
   }
 
-  // Plain text with @mentions wrapped in styled spans.
+  // ---------------------------------------------------------------------
+  // Is that "@something" a username?
+  //
+  // Usually not: people write "@everyone", "@ 8pm", "@ the mods". So an
+  // "@word" is rendered as plain text and only becomes a mention - green,
+  // and clickable for a user card - once the name is known to be a real one.
+  //
+  // Names the page has already seen for real (anyone who has spoken, been
+  // moderated, been replied to, or pinned a message) need no asking. Anything
+  // else is asked about once, one request at a time, and both answers are
+  // remembered so a name typed over and over costs a single lookup.
+  // ---------------------------------------------------------------------
+
+  const MENTION_CHECK_SPACING_MS = 400;
+  const MENTION_QUEUE_CAP = 40;
+  const MENTION_STATUS_CAP = 500;
+  const KNOWN_USERS_CAP = 5000;
+
+  const knownUsers = new Set();          // lowercase names seen as real users
+  const mentionStatus = new Map();       // lowercase name -> true | false
+  const mentionQueue = [];               // names waiting to be asked about
+  const mentionQueued = new Set();
+  // Names with an unstyled candidate somewhere on the page. Kept so that a
+  // new chatter, which is the common case by far, costs no DOM work at all
+  // unless someone actually typed their name earlier.
+  const awaitingMentions = new Set();
+  let mentionTimer = null;
+
+  // Every real username the page comes across, from any payload Kick sends.
+  function noteUser(name) {
+    const key = String(name || '').trim().toLowerCase();
+    if (!key || knownUsers.has(key)) return;
+    knownUsers.add(key);
+    while (knownUsers.size > KNOWN_USERS_CAP) {
+      knownUsers.delete(knownUsers.values().next().value);
+    }
+    // Someone may have been mentioned before they ever showed up.
+    markMentionsVerified(key);
+  }
+
+  function isKnownUser(key) {
+    return knownUsers.has(key) || mentionStatus.get(key) === true;
+  }
+
+  // Candidates live in the message list, the pinned banner and the user card,
+  // so the whole document is searched. The pattern below only matches word
+  // characters and hyphens, so the name is always safe in a selector.
+  function markMentionsVerified(key) {
+    if (!awaitingMentions.delete(key)) return;
+    for (const node of document.querySelectorAll(`.mention-candidate[data-name="${key}"]`)) {
+      node.classList.add('mention');
+    }
+  }
+
+  function rememberMentionStatus(key, isUser) {
+    mentionStatus.set(key, isUser);
+    while (mentionStatus.size > MENTION_STATUS_CAP) {
+      mentionStatus.delete(mentionStatus.keys().next().value);
+    }
+    if (isUser) markMentionsVerified(key);
+    else awaitingMentions.delete(key); // settled: it stays plain text
+  }
+
+  // `name` is what was typed, which is what Kick is asked about; `key` is its
+  // lowercase form, which is what everything here is keyed on.
+  function queueMentionCheck(key, name) {
+    if (!slug || mentionStatus.has(key) || mentionQueued.has(key) || knownUsers.has(key)) return;
+    mentionQueued.add(key);
+    mentionQueue.push({ key, name });
+    // Spam can name a lot of things that are not users; the oldest waiting
+    // ones matter least.
+    while (mentionQueue.length > MENTION_QUEUE_CAP) {
+      mentionQueued.delete(mentionQueue.shift().key);
+    }
+    pumpMentionQueue();
+  }
+
+  // One lookup at a time, spaced out: this runs off whatever chat types, so
+  // it must never turn into a burst of requests at Kick.
+  function pumpMentionQueue() {
+    if (mentionTimer || !mentionQueue.length) return;
+    mentionTimer = setTimeout(async () => {
+      mentionTimer = null;
+      const next = mentionQueue.shift();
+      if (next) {
+        mentionQueued.delete(next.key);
+        try {
+          rememberMentionStatus(next.key, !!(await kick.verifyUser(slug, next.name)));
+        } catch (_e) {
+          // Kick unreachable or unhappy: leave the name unresolved rather
+          // than remembering a "no" that was never really an answer.
+        }
+      }
+      pumpMentionQueue();
+    }, MENTION_CHECK_SPACING_MS);
+  }
+
+  // Plain text with @mentions wrapped in spans that are only styled once the
+  // name behind them is known to be a user.
   function appendTextWithMentions(container, text) {
     MENTION_PATTERN.lastIndex = 0;
     let lastIndex = 0;
@@ -845,9 +1174,21 @@
       if (start > lastIndex) {
         container.appendChild(document.createTextNode(text.slice(lastIndex, start)));
       }
+      const name = match[2];
+      const key = name.toLowerCase();
       const tag = document.createElement('span');
-      tag.className = 'mention';
-      tag.textContent = `@${match[2]}`;
+      tag.className = 'mention-candidate';
+      tag.dataset.name = key;
+      tag.textContent = `@${name}`;
+      if (isKnownUser(key)) {
+        tag.classList.add('mention');
+      } else if (mentionStatus.get(key) !== false) {
+        awaitingMentions.add(key);
+        while (awaitingMentions.size > MENTION_STATUS_CAP) {
+          awaitingMentions.delete(awaitingMentions.values().next().value);
+        }
+        queueMentionCheck(key, name);
+      }
       container.appendChild(tag);
       lastIndex = MENTION_PATTERN.lastIndex;
     }
@@ -891,6 +1232,7 @@
   const HEX_COLOR = /^#[0-9a-f]{3,8}$/i;
 
   function renderReply(replyTo) {
+    noteUser(replyTo.username);
     const line = document.createElement('div');
     line.className = 'reply';
     // Full original text for the hover tooltip when the line is truncated.
@@ -1038,6 +1380,7 @@
   function recordUserHistory(msg) {
     const key = (msg.username || '').toLowerCase();
     if (!key) return;
+    noteUser(key);
     const list = userHistory.get(key) || [];
     list.push({ content: msg.content, created_at: msg.created_at });
     if (list.length > HISTORY_PER_USER) list.shift();
@@ -1334,6 +1677,7 @@
 
   function showPin(ev) {
     const msg = ev.message || {};
+    noteUser(msg.username);
     pinContent.replaceChildren();
     const user = document.createElement('span');
     user.className = 'user';

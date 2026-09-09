@@ -221,3 +221,42 @@ test('PusherRelay: handshake subscribes to both channels and routes frames', () 
   relay.handleFrame('not json at all');
   relay.clearTimers();
 });
+
+test('KickApi.verifyUser: real name, unknown name, and both answers cached', async () => {
+  let calls = 0;
+  const api = new KickApi({
+    fetchImpl: async (url) => {
+      calls++;
+      return fakeFetch([
+        ['/channels/xqc/users/epicnoob', { id: 1, username: 'EpicNoob', slug: 'epicnoob' }],
+      ])(url);
+    },
+  });
+
+  // Kick's own spelling comes back, not whatever was typed.
+  assert.equal(await api.verifyUser('xqc', 'epicnoob'), 'EpicNoob');
+  assert.equal(calls, 1);
+  // The name is asked about as typed, but cached case-insensitively.
+  assert.equal(await api.verifyUser('xqc', 'EpicNoob'), 'EpicNoob', 'served from cache');
+  assert.equal(calls, 1);
+
+  // "@everyone" is not a user: a 404 is a real answer, and it is remembered.
+  assert.equal(await api.verifyUser('xqc', 'everyone'), null);
+  assert.equal(calls, 2);
+  assert.equal(await api.verifyUser('xqc', 'everyone'), null);
+  assert.equal(calls, 2, 'the "no" is cached too');
+});
+
+test('KickApi.verifyUser: a failing request throws instead of caching a "no"', async () => {
+  let calls = 0;
+  const api = new KickApi({
+    fetchImpl: async () => {
+      calls++;
+      return { ok: false, status: 500, json: async () => ({}) };
+    },
+  });
+
+  await assert.rejects(() => api.verifyUser('xqc', 'someone'));
+  await assert.rejects(() => api.verifyUser('xqc', 'someone'));
+  assert.equal(calls, 2, 'asked again rather than remembered as "not a user"');
+});

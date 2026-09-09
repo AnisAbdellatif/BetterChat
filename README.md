@@ -41,7 +41,11 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
   verified / staff / bot, and Kick's hosted images for chat level and event
   badges.
 - Username in the sender's Kick identity color, `[emote:id:name]`
-  placeholders rendered as images, `@mentions` shown as tags, reply threads
+  placeholders rendered as images, `@mentions` shown as tags once the name is
+  confirmed to be a real user (people write `@everyone` and `@ 8pm` too, so an
+  `@word` stays plain text until the name is known: anyone the page has
+  already seen counts, anything else is looked up once, one request at a time,
+  and both answers are cached), reply threads
   ("Replying to @user: ..." - hover a clipped one for the full text),
   optional timestamps.
 - Recent messages are backfilled on open from Kick's history endpoint.
@@ -67,7 +71,9 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
 - Appearance: font size and family (presets or any installed font),
   background color, message spacing, one color for all usernames, timestamps,
   scroll-back through history with a history size, user cards on/off.
-- Badges: choose which badge kinds are shown.
+- Badges: choose which badge kinds are shown, and drag them (or use each
+  row's arrows) into the order they are drawn in next to usernames. Badges of
+  the same kind keep Kick's own order within it.
 - Filters: hide messages a user repeats within a timespan (per user), collapse
   an emote spammed back-to-back in one message, highlight messages that
   @mention you.
@@ -140,12 +146,25 @@ it has loaded.
 Navigations are network-first, so a deploy is picked up straight away and
 the cached shell is only used when the origin can't be reached. Scripts are
 stale-while-revalidate: instant from cache, refreshed in the background, so
-a viewer is one load behind at worst. **Bump `VERSION` in `site/sw.js` when
+a viewer is one load behind at worst. **Bump the version in `site/sw.js` when
 you change a file the worker caches** - the shell, `app.js`, `kick.js`,
 `config.js` - since with no build step and no hashed filenames that constant
-is the only thing that retires an old cache. Editing `sw.js` itself needs no
-bump: browsers compare the worker byte for byte and install a changed one on
-their own.
+is the only thing that retires an old cache.
+
+The version is two numbers, `v<MAJOR>.<MINOR>`:
+
+- **`MINOR` is the everyday bump.** Edited `app.js`? Bump `MINOR`, nothing
+  else. This is what almost every deploy does.
+- **`MAJOR` is for caching itself changing** - a different set of cached
+  assets, a different strategy, or a shell that an old cached copy could not
+  work with. Bump it and reset `MINOR` to `0`.
+
+The browser only cares that the string differs from the last one, since
+`activate` drops every cache that is not the current one; the split is there
+to keep the routine bump small and to make a real change to the caching
+behaviour stand out in a diff. Editing `sw.js` itself needs no bump:
+browsers compare the worker byte for byte and install a changed one on their
+own.
 
 `/privacy` is deliberately left to the network. Navigations are cached under
 one fixed shell key, so caching the policy would overwrite the chat page an

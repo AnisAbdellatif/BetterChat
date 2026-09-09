@@ -8,10 +8,24 @@
 //
 // The site has no build step, so filenames never change and a long max-age
 // from the server would risk pinning viewers to stale JS forever. Versioning
-// lives here instead: bump VERSION on deploy and the old cache is dropped on
-// activate.
+// lives here instead: bump the version on deploy and the old cache is
+// dropped on activate.
+//
+// Two numbers, so the ordinary case is a small edit:
+//
+//   MINOR - the everyday bump. Any change to a file the worker caches: the
+//           page, app.js, kick.js, config.js. Bump this and nothing else.
+//   MAJOR - reserved for a change to what caching itself does: a different
+//           set of cached assets, a different strategy, or a shell an old
+//           cached copy could not work with. Bump it and reset MINOR to 0.
+//
+// Only the resulting string matters to the browser, and only that it differs
+// from the last one - the cleanup below drops every cache that is not the
+// current one, so the numbers are for us, not for it.
 
-const VERSION = 'v3';
+const MAJOR = 1;
+const MINOR = 1;
+const VERSION = `v${MAJOR}.${MINOR}`;
 const CACHE = `betterchat-${VERSION}`;
 
 // The chat page is served for every unknown path (/xqc, /clix, ...) and

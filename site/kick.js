@@ -252,6 +252,30 @@
     // The data behind a user card: who they are + their relationship to the
     // channel. Merges Kick's per-channel user endpoint with the user's own
     // channel record (follower count, bio); the latter is optional.
+    // Does this channel know a user by this name? Answers an "@something" in
+    // a message, where "something" is just as likely to be a word as a
+    // username. Only the channel-user endpoint is asked - no profile merge,
+    // since nothing is displayed from it - and the answer is cached either
+    // way, so a name typed over and over costs one request. A 404 is a real
+    // "no"; anything else throws so a network blip is not remembered as one.
+    // Resolves to Kick's own spelling of the name, or null.
+    verifyUser(channelSlug, username) {
+      channelSlug = String(channelSlug || '').trim().toLowerCase();
+      username = String(username || '').trim();
+      const key = `exists:${channelSlug}:${username.toLowerCase()}`;
+      return this.cached(key, 10 * 60000, async () => {
+        try {
+          const user = await this.get(
+            `/channels/${encodeURIComponent(channelSlug)}/users/${encodeURIComponent(username)}`
+          );
+          return str(user.username) || username;
+        } catch (e) {
+          if (e && e.status === 404) return null;
+          throw e;
+        }
+      });
+    }
+
     userCard(channelSlug, username) {
       channelSlug = String(channelSlug || '').trim().toLowerCase();
       username = String(username || '').trim();

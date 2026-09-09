@@ -537,6 +537,50 @@
     cursor: pointer;
   }
   .checks input { accent-color: #53fc18; margin: 0; }
+
+  /* Badge list: shown/hidden and the drawing order in one list. */
+  .badge-order { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+  .badge-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.03);
+    color: #d3d3d8;
+    cursor: grab;
+  }
+  .badge-row:hover { background: rgba(255, 255, 255, 0.07); }
+  .badge-row.dragging { opacity: 0.45; cursor: grabbing; }
+  /* Where the dragged row would land. */
+  .badge-row.drop-before { border-top-color: #53fc18; }
+  .badge-row.drop-after { border-bottom-color: #53fc18; }
+  .badge-grip { color: #7d8085; font-size: 13px; line-height: 1; }
+  .badge-row label {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    cursor: pointer;
+  }
+  .badge-row input { accent-color: #53fc18; margin: 0; }
+  .badge-move {
+    flex: 0 0 auto;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    background: none;
+    border: 1px solid #33373b;
+    border-radius: 4px;
+    color: #adadb8;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .badge-move:hover:not(:disabled) { color: #efeff1; border-color: #53fc18; }
+  .badge-move:disabled { opacity: 0.3; cursor: default; }
   .section-title { font-weight: 600; }
   .section-desc { color: #adadb8; font-size: 12px; margin-top: 2px; }
   .color-field { display: flex; align-items: center; gap: 6px; }
@@ -692,22 +736,12 @@
       <div class="tab-panel" data-tab-panel="badges" role="tabpanel" hidden>
         <div class="setting">
           <div class="section-title">Badges shown</div>
-          <div class="section-desc">Untick a badge type to hide it next to usernames.</div>
-          <div class="checks">
-            <label><input type="checkbox" data-badge="broadcaster" /> Broadcaster</label>
-            <label><input type="checkbox" data-badge="moderator" /> Moderator</label>
-            <label><input type="checkbox" data-badge="vip" /> VIP</label>
-            <label><input type="checkbox" data-badge="og" /> OG</label>
-            <label><input type="checkbox" data-badge="subscriber" /> Subscriber</label>
-            <label><input type="checkbox" data-badge="sub_gifter" /> Sub gifter</label>
-            <label><input type="checkbox" data-badge="founder" /> Founder</label>
-            <label><input type="checkbox" data-badge="verified" /> Verified</label>
-            <label><input type="checkbox" data-badge="staff" /> Kick staff</label>
-            <label><input type="checkbox" data-badge="bot" /> Bot</label>
-            <label><input type="checkbox" data-badge="level" /> Chat level</label>
-            <label><input type="checkbox" data-badge="event" /> Event / other Kick badges</label>
-            <label><input type="checkbox" data-badge="other" /> Unknown badge types</label>
+          <div class="section-desc">
+            Untick a badge type to hide it next to usernames. Drag a row, or
+            use its arrows, to change the order they are drawn in.
           </div>
+          <!-- Rows are built by app.js from the saved order. -->
+          <div id="badgeList" class="badge-order"></div>
         </div>
       </div>
 
@@ -741,7 +775,7 @@
             <label for="mentionMe">Highlight messages mentioning</label>
             <input id="mentionMe" class="wide" type="text" maxlength="30" placeholder="your username" spellcheck="false" data-setting="mentionMe" />
           </div>
-          <div class="section-desc">@mentions are always shown as tags; messages that @mention this name are also highlighted.</div>
+          <div class="section-desc">An @name is shown as a tag once it is confirmed to be a real user of this channel; messages that @mention this name are also highlighted.</div>
         </div>
       </div>
 
