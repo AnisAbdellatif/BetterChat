@@ -76,8 +76,18 @@ self.addEventListener('fetch', (event) => {
   // Kick's API, its emote images and the Pusher feed are all cross-origin
   // and must never be touched here.
   if (url.origin !== self.location.origin) return;
-  // Heartbeats and the admin board are live data, never cached.
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/admin')) return;
+  // Heartbeats and the admin board are live data, never cached. The privacy
+  // policy is skipped for a subtler reason: navigations are cached under the
+  // fixed SHELL key, so letting it through here would overwrite the cached
+  // chat page with the policy and serve that to an offline viewer.
+  if (
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/admin') ||
+    url.pathname === '/privacy' ||
+    url.pathname === '/privacy.html'
+  ) {
+    return;
+  }
 
   event.respondWith(request.mode === 'navigate' ? networkFirst(request) : staleWhileRevalidate(request));
 });

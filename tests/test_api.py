@@ -175,3 +175,25 @@ def test_service_worker_is_served_at_the_root_scope(monkeypatch):
         assert res.status_code == 200
         assert "javascript" in res.headers["content-type"]
         assert "betterchat-" in res.text
+
+
+def test_privacy_policy_is_served_and_not_the_chat_shell(monkeypatch):
+    """/privacy must beat the catch-all.
+
+    Every unknown path is the chat page, which reads its channel from the URL,
+    so if this route were ever registered after the catch-all the policy would
+    render as a viewer hunting for a Kick channel called "privacy".
+    """
+    monkeypatch.delenv("SITE_DIR", raising=False)
+    app = create_app(Stats(path=None), sample_loop=False)
+    with TestClient(app) as c:
+        res = c.get("/privacy")
+        assert res.status_code == 200
+        assert "Privacy Policy" in res.text
+        assert "<title>BetterChat</title>" not in res.text
+
+
+def test_privacy_is_404_when_the_site_has_no_policy(client):
+    # The test site fixture has no privacy.html: a missing file is a 404, not
+    # a 500 from FileResponse at request time.
+    assert client.get("/privacy").status_code == 404

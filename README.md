@@ -4,9 +4,17 @@ A customizable viewer for any Kick channel's chat. Open `/<channel>` (for
 example `/xqc`) and the page talks to Kick directly from the browser: it
 resolves the channel over Kick's REST API and subscribes to Kick's Pusher
 feed itself. A small Python server (FastAPI, run with uv) hands out the
-page, counts viewers from anonymous heartbeats, and shows an admin board.
-One process, one hostname, published from a homelab through a Cloudflare
-Tunnel.
+page and carries an admin board. One process, one hostname, published from
+a homelab through a Cloudflare Tunnel.
+
+**The page currently sends nothing back.** The heartbeats that fed the
+board's viewer counts were taken out of `site/app.js` while the browser
+extension goes through Chrome Web Store review - with no data leaving the
+page there is nothing to declare and no privacy policy to stand behind yet.
+Everything that received them (`POST /api/beat`, `betterchat/stats.py`,
+`/admin`) is still here and still tested, so restoring the feature means
+putting the sender back and nothing else. The paragraphs below describe it
+as it will work again.
 
 This is the successor of the Elixir/Phoenix version (the `betterchat`
 repo), which relayed chat through a server. Kick's API answers cross-origin
@@ -17,7 +25,8 @@ lives in `site/kick.js`.
 ## Layout
 
 ```
-site/          the chat page: index.html, app.js, kick.js, config.js, sw.js
+site/          the chat page: index.html, app.js, kick.js, config.js, sw.js,
+               privacy.html
 betterchat/    the server: main.py (routes), stats.py (heartbeats -> stats), admin.html
 tests/         pytest (server) + node --test (kick.js)
 pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
@@ -79,7 +88,7 @@ per-channel table. HTTP Basic Auth; a 404 until credentials are set.
  (channel, pin,              (kick.js +                 (chatrooms.<id>.v2,
   history, user)              app.js)                    channel.<id>)
                                  |
-              GET /<channel>     |     POST /api/beat (join / every 5 min / leave)
+              GET /<channel>     |     POST /api/beat  (sender removed for now)
                                  v
                         betterchat server (uv)  -->  GET /admin
 ```
@@ -93,18 +102,22 @@ per-channel table. HTTP Basic Auth; a 404 until credentials are set.
     exponential backoff.
   - `normalizeMessage` / `normalizeEvent`: Kick's raw payloads into the
     shapes `app.js` renders.
-- `site/app.js` - rendering, filters, settings, user cards, overlay mode,
-  and the heartbeat sender. `site/config.js` - Kick's public Pusher app key
+- `site/app.js` - rendering, filters, settings, user cards and overlay
+  mode. `site/config.js` - Kick's public Pusher app key
   and cluster (the same values kick.com ships to every browser).
 - `betterchat/main.py` - serves `site/` (every unknown path is the chat
-  page, real files as-is), takes heartbeats, serves the board.
+  page, real files as-is), takes heartbeats, serves the board, and answers
+  `/privacy` with `site/privacy.html`. That route is registered before the
+  catch-all on purpose: otherwise `/privacy` would be read as a channel slug
+  and the viewer would go looking for a Kick channel by that name.
   `betterchat/stats.py` - live sessions with expiry, per-channel totals,
   a 24h series and joins per hour, persisted to a JSON file every minute
   and on shutdown.
 
 Every viewer holds their own connection to Kick, exactly like a kick.com tab
-does. Heartbeats are anonymous: a random per-tab id, the channel slug, a
-message count, and whether the page is embedded. "Viewers" means open tabs, not people; a tab that dies
+does. Heartbeats were anonymous: a random per-tab id, the channel slug, a
+message count, and whether the page is embedded. "Viewers" means open tabs,
+not people; a tab that dies
 without a `leave` drops out after 7 minutes. Message counts on the board are
 the maximum any viewer of a channel reported per minute, which approximates
 the channel's real rate instead of multiplying it by the viewer count.
@@ -114,16 +127,23 @@ the channel's real rate instead of multiplying it by the viewer count.
 `site/sw.js` caches the shell and the scripts, so the page loads even when
 this server doesn't answer. That is worth more here than for most sites:
 the chat is entirely client-side, so a cached load is a fully working one -
-`kick.js` reaches kick.com directly for the API and the Pusher feed, and the
-only thing lost while the origin is down is the heartbeats, which already
-fail silently.
+`kick.js` reaches kick.com directly for the API and the Pusher feed, and
+with the heartbeats gone the page asks this origin for nothing at all once
+it has loaded.
 
 Navigations are network-first, so a deploy is picked up straight away and
 the cached shell is only used when the origin can't be reached. Scripts are
 stale-while-revalidate: instant from cache, refreshed in the background, so
 a viewer is one load behind at worst. **Bump `VERSION` in `site/sw.js` when
-you change a file under `site/`** - with no build step and no hashed
-filenames, that constant is the only thing that retires an old cache.
+you change a file the worker caches** - the shell, `app.js`, `kick.js`,
+`config.js` - since with no build step and no hashed filenames that constant
+is the only thing that retires an old cache. Editing `sw.js` itself needs no
+bump: browsers compare the worker byte for byte and install a changed one on
+their own.
+
+`/privacy` is deliberately left to the network. Navigations are cached under
+one fixed shell key, so caching the policy would overwrite the chat page an
+offline viewer gets served.
 
 ## Running it
 
@@ -154,12 +174,13 @@ npm test             # kick.js: normalizers, API client (fake fetch), relay fram
 ## Embedding it in kick.com
 
 An extension can drop the chat into kick.com's page in place of the official
-one by framing `https://betterchat.tech/<channel>?embed=1`. Nothing about
-the heartbeats changes: inside the frame the page's origin is still this
-server, so the relative `/api/beat` resolves here rather than to kick.com,
-and no CORS is involved. `?embed=1` only tags the beats `source: "embed"`,
-which the board reports separately (an "Embedded" column, and the split
-under "Viewers now").
+one by framing `https://betterchat.tech/<channel>?embed=1`. The extension
+still passes `?embed=1`, but nothing reads it while the sender is out; it is
+what tagged beats `source: "embed"` so the board could report extension
+viewers separately (an "Embedded" column, and the split under "Viewers
+now"). When the heartbeats come back no CORS is involved: inside the frame
+the page's origin is still this server, so a relative `/api/beat` resolves
+here rather than to kick.com.
 
 Two things the embedding side owns:
 
@@ -204,3 +225,10 @@ stats persist on the `betterchat-data` volume.
   Cloudflare honors that. Because the names never change, a long `max-age`
   is not an option - it would pin viewers to stale JS with no way to break
   out. Versioning lives in the service worker instead.
+
+## Trademarks
+
+Kick and the Kick logo are trademarks of their respective owners. BetterChat
+is an independent, unofficial project with no affiliation with Kick: it is
+not made, endorsed, sponsored or reviewed by them, and it uses their name
+only to say which service it works with.

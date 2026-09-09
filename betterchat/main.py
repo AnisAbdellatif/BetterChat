@@ -1,6 +1,7 @@
 """BetterChat server: serves the chat site, takes heartbeats, shows the stats.
 
     GET  /, /<channel>, ...  the chat page (site/), real files served as-is
+    GET  /privacy            the privacy policy (site/privacy.html)
     POST /api/beat           heartbeat from an open chat tab
     GET  /admin              the stats board (HTTP Basic Auth)
     GET  /admin/api/stats    the JSON the board polls (HTTP Basic Auth)
@@ -188,6 +189,21 @@ def create_app(stats: Stats | None = None, sample_loop: bool = True) -> FastAPI:
     )
     if frame_ancestors:
         log.info("restricting frame-ancestors to %s", frame_ancestors)
+
+    # Registered before the catch-all on purpose: every unknown path is the
+    # chat page, so without this /privacy would be read as a channel slug and
+    # the viewer would go looking for a Kick channel called "privacy".
+    privacy = site / "privacy.html"
+
+    @app.get("/privacy")
+    async def privacy_page() -> FileResponse:
+        if not privacy.is_file():
+            raise HTTPException(status.HTTP_404_NOT_FOUND)
+        return FileResponse(
+            privacy,
+            media_type="text/html",
+            headers={"Cache-Control": "public, max-age=0, must-revalidate", **frame_headers},
+        )
 
     @app.get("/{path:path}")
     async def site_file(path: str) -> FileResponse:
