@@ -148,3 +148,34 @@ def test_unknown_source_is_rejected():
     else:
         raise AssertionError("expected ValueError")
     assert stats.snapshot()["current"]["viewers"] == 0
+
+
+def test_build_splits_live_viewers():
+    """The dev deployment reports to this board, labelled, so both are visible."""
+    stats, _clock = make()
+    stats.beat("tab-aaaaaaaa", "xqc", "join")                # defaults to stable
+    stats.beat("tab-bbbbbbbb", "xqc", "join", build="dev")
+    stats.beat("tab-cccccccc", "clix", "join", source="embed", build="dev")
+
+    snap = stats.snapshot()
+    assert snap["current"]["viewers"] == 3
+    assert snap["current"]["by_build"] == {"stable": 1, "dev": 2}
+    # The two splits are independent: an embed can be on either build.
+    assert snap["current"]["by_source"] == {"site": 2, "embed": 1}
+
+    # A session keeps the build it joined with, and leaving drops it again.
+    stats.beat("tab-bbbbbbbb", "xqc", "beat")
+    assert stats.snapshot()["current"]["by_build"] == {"stable": 1, "dev": 2}
+    stats.beat("tab-bbbbbbbb", "xqc", "leave")
+    assert stats.snapshot()["current"]["by_build"] == {"stable": 1, "dev": 1}
+
+
+def test_unknown_build_is_rejected():
+    stats, _clock = make()
+    try:
+        stats.beat("tab-aaaaaaaa", "xqc", "join", build="staging")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError")
+    assert stats.snapshot()["current"]["viewers"] == 0

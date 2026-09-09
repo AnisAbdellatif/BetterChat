@@ -39,6 +39,10 @@ VALID_EVENTS = ("join", "beat", "leave")
 # Where the tab is running: the site itself, or the chat page embedded in an
 # iframe on kick.com. Beats without a source are counted as "site".
 VALID_SOURCES = ("site", "embed")
+# Which deployment the tab is running. The dev instance posts its beats here
+# rather than to its own board, so one board answers "who is watching" for
+# both. Beats without a build are counted as "stable".
+VALID_BUILDS = ("stable", "dev")
 
 
 class Stats:
@@ -64,12 +68,22 @@ class Stats:
 
     # ---------------------------------------------------------------- input --
 
-    def beat(self, tab: str, channel: str, event: str, messages: int = 0, source: str = "site") -> None:
+    def beat(
+        self,
+        tab: str,
+        channel: str,
+        event: str,
+        messages: int = 0,
+        source: str = "site",
+        build: str = "stable",
+    ) -> None:
         """Record one heartbeat. `messages` is the viewer's count since its last beat."""
         if event not in VALID_EVENTS:
             raise ValueError(f"unknown event {event!r}")
         if source not in VALID_SOURCES:
             raise ValueError(f"unknown source {source!r}")
+        if build not in VALID_BUILDS:
+            raise ValueError(f"unknown build {build!r}")
         now = int(self.clock())
         with self._lock:
             session = self.sessions.get(tab)
@@ -85,15 +99,23 @@ class Stats:
                 # channel without leaving) counts as a fresh join.
                 if session is not None:
                     self._end_session(tab, now)
-                self._start_session(tab, channel, now, source)
+                self._start_session(tab, channel, now, source, build)
             else:
                 session["last_seen"] = now
                 self.channels[channel]["last_seen"] = now
 
             self._note_messages(channel, now, messages)
 
-    def _start_session(self, tab: str, channel: str, now: int, source: str = "site") -> None:
-        self.sessions[tab] = {"channel": channel, "joined_at": now, "last_seen": now, "source": source}
+    def _start_session(
+        self, tab: str, channel: str, now: int, source: str = "site", build: str = "stable"
+    ) -> None:
+        self.sessions[tab] = {
+            "channel": channel,
+            "joined_at": now,
+            "last_seen": now,
+            "source": source,
+            "build": build,
+        }
         c = self.channels.setdefault(
             channel, {"peak": 0, "joins": 0, "watch_seconds": 0, "messages": 0, "last_seen": now}
         )
@@ -164,10 +186,12 @@ class Stats:
             live: dict[str, int] = {}
             embedded: dict[str, int] = {}
             by_source = dict.fromkeys(VALID_SOURCES, 0)
+            by_build = dict.fromkeys(VALID_BUILDS, 0)
             for s in self.sessions.values():
                 live[s["channel"]] = live.get(s["channel"], 0) + 1
                 source = s.get("source", "site")
                 by_source[source] = by_source.get(source, 0) + 1
+                by_build[s.get("build", "stable")] = by_build.get(s.get("build", "stable"), 0) + 1
                 if source == "embed":
                     embedded[s["channel"]] = embedded.get(s["channel"], 0) + 1
 
@@ -199,6 +223,7 @@ class Stats:
                     "viewers": len(self.sessions),
                     "channels_watched": len(live),
                     "by_source": by_source,
+                    "by_build": by_build,
                     "messages_total": sum(c["messages"] for c in channels),
                 },
                 "totals": {

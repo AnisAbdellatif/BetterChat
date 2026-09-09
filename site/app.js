@@ -224,6 +224,16 @@
     }
   }
 
+  // Consent is not something a link can grant on someone else's behalf, so it
+  // stays out of the URL in both directions and out of an exported file. It
+  // changes by the banner or its own switch, in the viewer's own browser, or
+  // it does not change.
+  //
+  // Declared here rather than beside settingsAsParams below: settingsFromUrl
+  // runs while this file is still being evaluated, so anything it reads has
+  // to exist by this line.
+  const NOT_SHAREABLE = new Set(['stats']);
+
   // Settings in the URL: ?fontSize=16&monocolor=1&hiddenBadges=level,event
   // Booleans accept 1/0/true/false/on/off, arrays are comma-separated.
   function settingsFromUrl() {
@@ -256,12 +266,6 @@
   }
 
   // Only the settings that differ from the defaults, as URL parameters.
-  // Consent is not something a link can grant on someone else's behalf, so it
-  // stays out of the URL in both directions and out of an exported file. It
-  // changes by the banner or its own switch, in the viewer's own browser, or
-  // it does not change.
-  const NOT_SHAREABLE = new Set(['stats']);
-
   function settingsAsParams(target) {
     const params = new URLSearchParams();
     for (const key of Object.keys(DEFAULTS)) {
@@ -2146,6 +2150,15 @@
   // ---------------------------------------------------------------------
 
   const BEAT_INTERVAL_MS = 5 * 60 * 1000;
+  // Which deployment this is. The dev instance reports to the stable board
+  // rather than keeping one of its own, so a single board answers "who is
+  // watching" for both, with the split shown there.
+  const STABLE_ORIGIN = 'https://betterchat.tech';
+  const buildName = location.hostname.startsWith('dev.') ? 'dev' : 'stable';
+  // Relative for stable, on purpose: inside an iframe it still resolves to
+  // this server rather than to the site doing the embedding. Dev is the one
+  // case that has to name where it is going.
+  const BEAT_URL = buildName === 'dev' ? STABLE_ORIGIN + '/api/beat' : '/api/beat';
   // Overlay mode is the streamer's own OBS source, not a viewer, and a page
   // opened from a file or another static server has no /api/beat to talk to.
   const beatsPossible = /^https?:$/.test(location.protocol) && !overlayMode;
@@ -2187,9 +2200,10 @@
       event,
       messages: messagesSinceBeat,
       source: embedMode ? 'embed' : 'site',
+      build: buildName,
     });
     messagesSinceBeat = 0;
-    const url = '/api/beat';
+    const url = BEAT_URL;
     if (event === 'leave' && navigator.sendBeacon) {
       navigator.sendBeacon(url, body); // a string body is sent as text/plain
       return;

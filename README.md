@@ -210,6 +210,7 @@ npm test             # kick.js: normalizers, API client (fake fetch), relay fram
 | `STATS_PATH` | Persisted stats file (default `data/stats.json`; `/app/data/stats.json` in Docker). |
 | `SITE_DIR` | The static site (default: `site/` in the repo). |
 | `FRAME_ANCESTORS` | CSP `frame-ancestors` for the site, e.g. `'self' https://kick.com`. Unset sends no header. |
+| `BEAT_ORIGINS` | Origins allowed to post heartbeats cross-origin, e.g. `https://dev.betterchat.tech`. Unset means same-origin only. |
 | `HOST`, `PORT` | Listen address (default `0.0.0.0:8010`). |
 
 ## Embedding it in kick.com
@@ -307,6 +308,14 @@ They are separate in every way that matters: their own checkout, their own
 compose project, their own container, their own data volume, their own image
 tag and their own port. Nothing is shared but the host and the runner, and the
 runner takes one job at a time, so the two deploys cannot even overlap.
+
+One thing is deliberately shared: **the admin board**. The dev page posts its
+heartbeats to the stable origin rather than to its own instance, tagged
+`build: "dev"`, so a single board answers "who is watching" for both and shows
+the split. That needs `BEAT_ORIGINS=https://dev.betterchat.tech` in the stable
+`.env`; the dev instance leaves it empty, since nothing reports to dev. Dev
+viewers do count toward the shared totals, which is fine when dev is you
+testing and worth remembering if it ever gets busier.
 
 The image tag is the part that is easy to get wrong. With a fixed
 `betterchat:local`, a dev build would move the tag that production's *next*
