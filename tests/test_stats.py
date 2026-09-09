@@ -27,6 +27,7 @@ def test_join_beat_leave_tracks_viewers_and_watch_time():
     assert snap["channels"][0] == {
         "slug": "xqc",
         "current": 2,
+        "embedded": 0,
         "peak": 2,
         "joins": 2,
         "watch_hours": 0.0,
@@ -116,3 +117,34 @@ def test_unknown_event_is_rejected():
         pass
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_source_splits_live_viewers_without_touching_totals():
+    stats, _clock = make()
+    stats.beat("tab-aaaaaaaa", "xqc", "join")               # defaults to the site
+    stats.beat("tab-bbbbbbbb", "xqc", "join", source="embed")
+    stats.beat("tab-cccccccc", "clix", "join", source="embed")
+
+    snap = stats.snapshot()
+    assert snap["current"]["viewers"] == 3
+    assert snap["current"]["by_source"] == {"site": 1, "embed": 2}
+    channels = {c["slug"]: c for c in snap["channels"]}
+    assert (channels["xqc"]["current"], channels["xqc"]["embedded"]) == (2, 1)
+    assert (channels["clix"]["current"], channels["clix"]["embedded"]) == (1, 1)
+
+    # A session keeps the source it joined with, and leaving drops it again.
+    stats.beat("tab-bbbbbbbb", "xqc", "beat")
+    assert stats.snapshot()["current"]["by_source"] == {"site": 1, "embed": 2}
+    stats.beat("tab-bbbbbbbb", "xqc", "leave")
+    assert stats.snapshot()["current"]["by_source"] == {"site": 1, "embed": 1}
+
+
+def test_unknown_source_is_rejected():
+    stats, _clock = make()
+    try:
+        stats.beat("tab-aaaaaaaa", "xqc", "join", source="somewhere")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError")
+    assert stats.snapshot()["current"]["viewers"] == 0

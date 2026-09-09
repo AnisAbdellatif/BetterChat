@@ -113,6 +113,7 @@
             <tr>
               <th>Channel</th>
               <th class="num">Viewers now</th>
+              <th class="num">Embedded</th>
               <th class="num">Peak</th>
               <th class="num">Joins</th>
               <th class="num">Watch hours</th>
@@ -180,9 +181,16 @@
     return t;
   }
 
+  // "open chat tabs", plus the embed split once anyone is watching through
+  // one (the chat page in an iframe on kick.com rather than opened here).
+  function viewersSub(current) {
+    const embed = (current.by_source || {}).embed || 0;
+    return embed ? `open chat tabs - ${fmt(embed)} embedded` : 'open chat tabs';
+  }
+
   function renderTiles(s) {
     $('tiles').replaceChildren(
-      tile('Viewers now', fmt(s.current.viewers), 'open chat tabs'),
+      tile('Viewers now', fmt(s.current.viewers), viewersSub(s.current)),
       tile('Channels watched', fmt(s.current.channels_watched), `${fmt(s.totals.channels_seen)} seen since ${new Date(s.first_started_at * 1000).toLocaleDateString()}`),
       tile('Messages seen', fmt(s.current.messages_total), 'across all channels'),
       tile('Total joins', fmt(s.totals.joins), 'tabs opened on a channel'),
@@ -281,6 +289,7 @@
       name.appendChild(a);
       tr.appendChild(name);
       tr.appendChild(el('td', 'num', fmt(c.current)));
+      tr.appendChild(el('td', 'num', fmt(c.embedded)));
       tr.appendChild(el('td', 'num', fmt(c.peak)));
       tr.appendChild(el('td', 'num', fmt(c.joins)));
       tr.appendChild(el('td', 'num', fmt(c.watch_hours)));

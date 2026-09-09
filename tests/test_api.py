@@ -53,6 +53,13 @@ def test_beat_rejects_garbage(client):
     assert client.post("/api/beat", content='{"tab":"x","channel":"xqc","event":"join"}').status_code == 400
     assert client.post("/api/beat", content='{"tab":"tab-aaaaaaaa","channel":"../etc","event":"join"}').status_code == 400
     assert client.post("/api/beat", content='{"tab":"tab-aaaaaaaa","channel":"xqc","event":"nope"}').status_code == 400
+    assert (
+        client.post(
+            "/api/beat",
+            content='{"tab":"tab-aaaaaaaa","channel":"xqc","event":"join","source":"nope"}',
+        ).status_code
+        == 400
+    )
     assert client.post("/api/beat", content="x" * 2000).status_code == 413
 
 
@@ -123,3 +130,32 @@ def test_default_site_dir_is_the_repo_site(monkeypatch):
     with TestClient(app) as c:
         assert "<title>BetterChat</title>" in c.get("/xqc").text
         assert c.get("/kick.js").status_code == 200
+
+
+def test_embedded_beat_is_counted_separately(client):
+    """The chat page in an iframe on kick.com reports source=embed."""
+    client.post("/api/beat", content='{"tab":"tab-aaaaaaaa","channel":"xqc","event":"join"}')
+    client.post(
+        "/api/beat",
+        content='{"tab":"tab-bbbbbbbb","channel":"xqc","event":"join","source":"embed"}',
+    )
+    snap = client.get("/admin/api/stats", headers=auth()).json()
+    assert snap["current"]["viewers"] == 2
+    assert snap["current"]["by_source"] == {"site": 1, "embed": 1}
+    assert snap["channels"][0]["embedded"] == 1
+
+
+def test_frame_ancestors_header_is_opt_in(monkeypatch, tmp_path, site):
+    # Not just unset in this process - a developer's own .env is loaded at import.
+    monkeypatch.delenv("FRAME_ANCESTORS", raising=False)
+    app = create_app(Stats(path=None), sample_loop=False)
+    with TestClient(app) as c:
+        assert "content-security-policy" not in c.get("/xqc").headers
+
+    monkeypatch.setenv("FRAME_ANCESTORS", "'self' https://kick.com")
+    app = create_app(Stats(path=None), sample_loop=False)
+    with TestClient(app) as c:
+        for path in ("/xqc", "/app.js"):
+            assert c.get(path).headers["content-security-policy"] == (
+                "frame-ancestors 'self' https://kick.com"
+            )

@@ -15,6 +15,7 @@ Configuration is environment variables:
     ADMIN_USER / ADMIN_PASSWORD  both required or /admin is a 404
     STATS_PATH                   JSON file for persisted stats (data/stats.json)
     SITE_DIR                     the static site (default: ./site next to this package)
+    FRAME_ANCESTORS              CSP frame-ancestors for the site (unset: no header)
     HOST / PORT                  listen address for `betterchat` (0.0.0.0:8010)
 """
 
@@ -32,7 +33,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
-from .stats import VALID_EVENTS, Stats
+from .stats import VALID_EVENTS, VALID_SOURCES, Stats
 
 log = logging.getLogger("betterchat")
 
@@ -139,13 +140,20 @@ def create_app(stats: Stats | None = None, sample_loop: bool = True) -> FastAPI:
         channel = str(payload.get("channel", "")).lower()
         event = str(payload.get("event", ""))
         messages = payload.get("messages", 0)
-        if not TAB_RE.match(tab) or not SLUG_RE.match(channel) or event not in VALID_EVENTS:
+        # Absent on beats from an older cached page; those are plain site tabs.
+        source = str(payload.get("source", "site")) or "site"
+        if (
+            not TAB_RE.match(tab)
+            or not SLUG_RE.match(channel)
+            or event not in VALID_EVENTS
+            or source not in VALID_SOURCES
+        ):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid heartbeat")
         if not isinstance(messages, int) or isinstance(messages, bool):
             messages = 0
         messages = max(0, min(messages, MAX_MESSAGES_PER_BEAT))
 
-        stats.beat(tab, channel, event, messages)
+        stats.beat(tab, channel, event, messages, source)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     # ---------------------------------------------------------------- admin --
@@ -170,6 +178,17 @@ def create_app(stats: Stats | None = None, sample_loop: bool = True) -> FastAPI:
         raise RuntimeError(f"no chat site at {site} (set SITE_DIR)")
     log.info("serving the chat site from %s", site)
 
+    # Who may put the chat page in an iframe. Unset (the default) sends no
+    # header at all, which is what a direct visit wants and leaves embedding
+    # open; set it to pin embedding to the sites meant to do it, e.g.
+    # FRAME_ANCESTORS="'self' https://kick.com".
+    frame_ancestors = os.environ.get("FRAME_ANCESTORS", "").strip()
+    frame_headers = (
+        {"Content-Security-Policy": f"frame-ancestors {frame_ancestors}"} if frame_ancestors else {}
+    )
+    if frame_ancestors:
+        log.info("restricting frame-ancestors to %s", frame_ancestors)
+
     @app.get("/{path:path}")
     async def site_file(path: str) -> FileResponse:
         # Real files as-is, never cached for long (no build step means the
@@ -177,8 +196,13 @@ def create_app(stats: Stats | None = None, sample_loop: bool = True) -> FastAPI:
         # the channel from the URL (/xqc).
         candidate = (site / path).resolve() if path else index
         if candidate.is_file() and site in candidate.parents:
-            return FileResponse(candidate, headers={"Cache-Control": "public, max-age=0, must-revalidate"})
-        return FileResponse(index, media_type="text/html", headers={"Cache-Control": "no-cache"})
+            return FileResponse(
+                candidate,
+                headers={"Cache-Control": "public, max-age=0, must-revalidate", **frame_headers},
+            )
+        return FileResponse(
+            index, media_type="text/html", headers={"Cache-Control": "no-cache", **frame_headers}
+        )
 
     return app
 

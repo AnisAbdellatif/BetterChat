@@ -24,6 +24,12 @@
   // OBS overlay mode (?overlay=1): transparent, no controls, fading messages.
   const overlayMode = ['1', 'true', 'on'].includes((query.get('overlay') || '').toLowerCase());
 
+  // Embedded mode (?embed=1): this page is in an iframe on someone else's
+  // site - kick.com, in place of the official chat - instead of being opened
+  // directly. Only the heartbeats care: it tells the admin board which
+  // viewers arrived through an embed.
+  const embedMode = ['1', 'true', 'on'].includes((query.get('embed') || '').toLowerCase());
+
   // Filled in from the join reply: the channel's own subscriber badge
   // images, one per months-tier, sorted by months ascending.
   let subscriberBadges = [];
@@ -1385,8 +1391,10 @@
 
   // ---------------------------------------------------------------------
   // Heartbeats for the admin board, sent to the server this page came from
-  // (betterchat/main.py). Anonymous: a random per-tab id, the channel, and
-  // how many messages this tab saw since its last beat. Sent as text/plain
+  // (betterchat/main.py). Anonymous: a random per-tab id, the channel, how
+  // many messages this tab saw since its last beat, and whether it is an
+  // embed. The URL is relative on purpose - in an iframe it still resolves
+  // to this server, not to the site doing the embedding. Sent as text/plain
   // so neither the keepalive fetch nor sendBeacon needs a preflight. Off in
   // overlay mode (that's the streamer's OBS, not a viewer) and when the page
   // is opened from a plain file / another static server (no /api/beat).
@@ -1395,8 +1403,13 @@
   const BEAT_INTERVAL_MS = 5 * 60 * 1000;
   const beatsEnabled = /^https?:$/.test(location.protocol) && !overlayMode;
   let messagesSinceBeat = 0;
+  // Resolved once. sessionStorage can be unavailable (an embed in a browser
+  // that blocks third-party storage), and re-rolling the id on the fallback
+  // path would make every beat look like another viewer joining.
+  let cachedTabId = null;
 
   function tabId() {
+    if (cachedTabId) return cachedTabId;
     try {
       let id = sessionStorage.getItem('betterchat.tab');
       if (!id || !/^[a-z0-9-]{8,64}$/.test(id)) {
@@ -1405,15 +1418,22 @@
         id = 'tab-' + Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
         sessionStorage.setItem('betterchat.tab', id);
       }
-      return id;
+      cachedTabId = id;
     } catch (_e) {
-      return 'tab-' + Math.random().toString(16).slice(2, 14).padEnd(12, '0');
+      cachedTabId = 'tab-' + Math.random().toString(16).slice(2, 14).padEnd(12, '0');
     }
+    return cachedTabId;
   }
 
   function sendBeat(channelSlug, event) {
     if (!beatsEnabled) return;
-    const body = JSON.stringify({ tab: tabId(), channel: channelSlug, event, messages: messagesSinceBeat });
+    const body = JSON.stringify({
+      tab: tabId(),
+      channel: channelSlug,
+      event,
+      messages: messagesSinceBeat,
+      source: embedMode ? 'embed' : 'site',
+    });
     messagesSinceBeat = 0;
     const url = '/api/beat';
     if (event === 'leave' && navigator.sendBeacon) {

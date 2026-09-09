@@ -36,6 +36,9 @@ SESSION_TTL_SEC = 7 * 60  # heartbeats come every 5 min
 MAX_SAMPLES = 24 * 60
 HOUR = 3600
 VALID_EVENTS = ("join", "beat", "leave")
+# Where the tab is running: the site itself, or the chat page embedded in an
+# iframe on kick.com. Beats without a source are counted as "site".
+VALID_SOURCES = ("site", "embed")
 
 
 class Stats:
@@ -61,10 +64,12 @@ class Stats:
 
     # ---------------------------------------------------------------- input --
 
-    def beat(self, tab: str, channel: str, event: str, messages: int = 0) -> None:
+    def beat(self, tab: str, channel: str, event: str, messages: int = 0, source: str = "site") -> None:
         """Record one heartbeat. `messages` is the viewer's count since its last beat."""
         if event not in VALID_EVENTS:
             raise ValueError(f"unknown event {event!r}")
+        if source not in VALID_SOURCES:
+            raise ValueError(f"unknown source {source!r}")
         now = int(self.clock())
         with self._lock:
             session = self.sessions.get(tab)
@@ -80,15 +85,15 @@ class Stats:
                 # channel without leaving) counts as a fresh join.
                 if session is not None:
                     self._end_session(tab, now)
-                self._start_session(tab, channel, now)
+                self._start_session(tab, channel, now, source)
             else:
                 session["last_seen"] = now
                 self.channels[channel]["last_seen"] = now
 
             self._note_messages(channel, now, messages)
 
-    def _start_session(self, tab: str, channel: str, now: int) -> None:
-        self.sessions[tab] = {"channel": channel, "joined_at": now, "last_seen": now}
+    def _start_session(self, tab: str, channel: str, now: int, source: str = "site") -> None:
+        self.sessions[tab] = {"channel": channel, "joined_at": now, "last_seen": now, "source": source}
         c = self.channels.setdefault(
             channel, {"peak": 0, "joins": 0, "watch_seconds": 0, "messages": 0, "last_seen": now}
         )
@@ -157,8 +162,14 @@ class Stats:
         now = int(self.clock())
         with self._lock:
             live: dict[str, int] = {}
+            embedded: dict[str, int] = {}
+            by_source = dict.fromkeys(VALID_SOURCES, 0)
             for s in self.sessions.values():
                 live[s["channel"]] = live.get(s["channel"], 0) + 1
+                source = s.get("source", "site")
+                by_source[source] = by_source.get(source, 0) + 1
+                if source == "embed":
+                    embedded[s["channel"]] = embedded.get(s["channel"], 0) + 1
 
             pending: dict[str, int] = {}
             for (slug, _minute), count in self.minute_messages.items():
@@ -168,6 +179,7 @@ class Stats:
                 {
                     "slug": slug,
                     "current": live.get(slug, 0),
+                    "embedded": embedded.get(slug, 0),
                     "peak": c["peak"],
                     "joins": c["joins"],
                     "watch_hours": round(c["watch_seconds"] / 3600, 2),
@@ -186,6 +198,7 @@ class Stats:
                 "current": {
                     "viewers": len(self.sessions),
                     "channels_watched": len(live),
+                    "by_source": by_source,
                     "messages_total": sum(c["messages"] for c in channels),
                 },
                 "totals": {

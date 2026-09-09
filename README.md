@@ -103,8 +103,8 @@ per-channel table. HTTP Basic Auth; a 404 until credentials are set.
   and on shutdown.
 
 Every viewer holds their own connection to Kick, exactly like a kick.com tab
-does. Heartbeats are anonymous: a random per-tab id, the channel slug, and a
-message count. "Viewers" means open tabs, not people; a tab that dies
+does. Heartbeats are anonymous: a random per-tab id, the channel slug, a
+message count, and whether the page is embedded. "Viewers" means open tabs, not people; a tab that dies
 without a `leave` drops out after 7 minutes. Message counts on the board are
 the maximum any viewer of a channel reported per minute, which approximates
 the channel's real rate instead of multiplying it by the viewer count.
@@ -132,7 +132,30 @@ npm test             # kick.js: normalizers, API client (fake fetch), relay fram
 | `ADMIN_USER`, `ADMIN_PASSWORD` | Enable `/admin` (both required). |
 | `STATS_PATH` | Persisted stats file (default `data/stats.json`; `/app/data/stats.json` in Docker). |
 | `SITE_DIR` | The static site (default: `site/` in the repo). |
+| `FRAME_ANCESTORS` | CSP `frame-ancestors` for the site, e.g. `'self' https://kick.com`. Unset sends no header. |
 | `HOST`, `PORT` | Listen address (default `0.0.0.0:8010`). |
+
+## Embedding it in kick.com
+
+An extension can drop the chat into kick.com's page in place of the official
+one by framing `https://betterchat.tech/<channel>?embed=1`. Nothing about
+the heartbeats changes: inside the frame the page's origin is still this
+server, so the relative `/api/beat` resolves here rather than to kick.com,
+and no CORS is involved. `?embed=1` only tags the beats `source: "embed"`,
+which the board reports separately (an "Embedded" column, and the split
+under "Viewers now").
+
+Two things the embedding side owns:
+
+- **Channel changes.** kick.com is an SPA, so a viewer going from `/xqc` to
+  `/clix` never reloads. Point the iframe's `src` at the new channel; the
+  tab id lives in `sessionStorage` and survives, and a beat naming a
+  different channel already ends the old session and starts a new one.
+- **Framing.** kick.com's own CSP decides whether the frame loads at all.
+  On this side, set `FRAME_ANCESTORS` to pin who may embed the page.
+
+Per-viewer settings are stored per-origin, so an embed keeps its own
+`localStorage` and does not inherit settings from a direct visit.
 
 ## Publishing (homelab + Cloudflare Tunnel)
 
