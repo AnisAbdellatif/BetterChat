@@ -65,8 +65,9 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
   moderation and event lines (both the user banned and the moderator who
   banned them).
 - **Moderating, inside the extension only.** Hovering a message gives a
-  delete button, and a user card gains timeout (1m / 5m / 15m / 1h / 1d), ban
-  and unban. This page has no Kick session of its own and never will - that
+  delete button, and a user card gains timeout (1m / 5m / 15m / 1h / 1d) and
+  ban, or unban for anyone currently banned or timed out. This page has no
+  Kick session of its own and never will - that
   is what makes it safe to open anywhere - so it asks the extension, whose
   content script is on kick.com and can act as the signed-in moderator. On
   betterchat.tech or in an overlay nothing answers the handshake and no
@@ -89,7 +90,8 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
   an emote spammed back-to-back in one message, highlight messages that
   @mention you.
 - Events: what to do with deleted messages, which moderation / pin / sub /
-  gift / host events to show, and whether a pinned message starts collapsed.
+  gift / host events to show, whether a pinned message starts collapsed, and
+  a switch for the moderation controls (shown only where they work).
 - Overlay & sharing: fade-out time for the OBS overlay, copy an overlay or
   settings link, export / import settings as JSON, reset.
 

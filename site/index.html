@@ -218,24 +218,31 @@
 
   /* Moderation. Only drawn inside the extension, where the parent page can
      act on Kick for us; body.can-moderate is what says so. */
+  /* The settings row for the controls, hidden unless the extension answered
+     the handshake - there is nothing to configure anywhere else. */
+  .mod-only { display: none; }
+  body.mod-capable .mod-only { display: flex; }
+
   body.can-moderate .msg { position: relative; }
   .mod-delete {
     position: absolute;
-    top: 1px;
+    top: 2px;
     right: 2px;
     display: none;
-    width: 18px;
-    height: 18px;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
     padding: 0;
     border: none;
-    border-radius: 4px;
+    border-radius: 5px;
     background: rgba(0, 0, 0, 0.6);
     color: #adadb8;
-    font-size: 13px;
+    font-size: 19px;
     line-height: 1;
     cursor: pointer;
   }
-  body.can-moderate .msg:hover .mod-delete { display: block; }
+  body.can-moderate .msg:hover .mod-delete { display: flex; }
   .mod-delete:hover { color: #ff6b6b; }
   .mod-delete:disabled { opacity: 0.4; cursor: default; }
 
@@ -848,6 +855,13 @@
             <span><span class="label">Show moderation events</span>
               <div class="desc">Timeouts, bans, unbans and chat clears as lines in the chat.</div></span>
             <input type="checkbox" data-setting="showModeration" /><span class="switch"></span>
+          </label>
+          <!-- Only shown where moderating is actually possible: inside the
+               BetterChat extension, signed in to Kick. -->
+          <label class="toggle-row mod-only" style="margin-top: 8px">
+            <span><span class="label">Moderation controls</span>
+              <div class="desc">Delete on a message, and timeout / ban / unban on a user card. Turn off to watch without them.</div></span>
+            <input type="checkbox" data-setting="modTools" /><span class="switch"></span>
           </label>
         </div>
 

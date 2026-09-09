@@ -113,6 +113,8 @@
     collapseEmotes: true,
     deletedMessages: 'gray',
     showModeration: true,
+    // The moderation controls themselves, where they are possible at all.
+    modTools: true,
     showPinned: true,
     // Pinned messages arrive collapsed, and only open when the viewer says so.
     collapsePinned: false,
@@ -309,6 +311,7 @@
       row.classList.toggle('mentions-me', mentionsMe(row.dataset.text));
     }
     applyPinVisibility();
+    applyModerationState();
   }
 
   // The pin banner changes the list's height, so showing or hiding it has to
@@ -1310,7 +1313,7 @@
 
     // Only where it can actually work, so ordinary viewers carry no extra
     // node per message. CSS reveals it on hover.
-    if (modAvailable) row.appendChild(deleteButton());
+    if (modEnabled()) row.appendChild(deleteButton());
 
     appendRow(row);
   }
@@ -1505,7 +1508,7 @@
       if (card.bio) userCardEl.appendChild(el('div', 'uc-bio', card.bio));
     }
 
-    if (modAvailable) userCardEl.appendChild(renderModTools((card && card.username) || username, card));
+    if (modEnabled()) userCardEl.appendChild(renderModTools((card && card.username) || username, card));
 
     const history = el('div', 'uc-history');
     history.appendChild(el('div', 'k', 'Recent messages'));
@@ -1635,6 +1638,12 @@
   // answers and nothing appears.
   // ---------------------------------------------------------------------
 
+  // Who is banned or timed out right now, as this page has seen it. Kick's
+  // user card is cached for a few minutes on both sides, so straight after a
+  // moderator acts this is the only source that is already right - and a
+  // timeout has to offer Unban just as a ban does.
+  const bannedNow = new Set(); // lowercase usernames
+
   const MOD_CHANNEL = 'bck-mod';
   const MOD_PARENT_ORIGIN = 'https://kick.com';
   const MOD_TIMEOUT_MS = 10000;
@@ -1664,32 +1673,45 @@
     resolve(msg);
   });
 
-  async function initModeration() {
-    if (overlayMode || window.parent === window) return;
-    const reply = await askParent({ type: 'hello' });
-    modAvailable = !!(reply && reply.available);
-    document.body.classList.toggle('can-moderate', modAvailable);
-    // The handshake can land after the first messages have been drawn, and a
-    // row builds its delete button only when moderation is already known to
-    // work. One pass catches whatever arrived in between.
-    if (!modAvailable) return;
+  // Two separate things: whether moderating is possible here at all, and
+  // whether the viewer wants the controls. The first decides if the setting
+  // is worth showing, the second is that setting.
+  function modEnabled() {
+    return modAvailable && settings.modTools;
+  }
+
+  function applyModerationState() {
+    document.body.classList.toggle('mod-capable', modAvailable);
+    document.body.classList.toggle('can-moderate', modEnabled());
+    if (!modEnabled()) return;
+    // A row builds its delete button only when the controls are already on, so
+    // this catches everything drawn before the handshake landed or before the
+    // setting was switched back on.
     for (const row of messagesEl.querySelectorAll('.msg[data-id]')) {
       if (!row.querySelector('.mod-delete')) row.appendChild(deleteButton());
     }
   }
 
+  async function initModeration() {
+    if (overlayMode || window.parent === window) return;
+    const reply = await askParent({ type: 'hello' });
+    modAvailable = !!(reply && reply.available);
+    applyModerationState();
+  }
+
   // Success needs no announcement: Kick broadcasts the ban or the deletion,
   // and this page already draws those. Only failure has to be said out loud.
   async function moderate(payload, describe) {
-    if (!modAvailable) return false;
+    if (!modEnabled()) return false;
     const reply = await askParent({ type: 'action', ...payload });
     if (reply && reply.ok) return true;
 
     systemLine(`could not ${describe}: ${(reply && reply.error) || 'the extension did not answer'}`, true);
     if (reply && reply.status === 403) {
-      // Not a moderator here. Stop offering controls that cannot work.
+      // Not a moderator here. Stop offering controls that cannot work, and
+      // take the setting away with them - there is nothing to configure.
       modAvailable = false;
-      document.body.classList.remove('can-moderate');
+      applyModerationState();
       closeUserCard();
     }
     return false;
@@ -1709,7 +1731,7 @@
 
   function renderModTools(username, card) {
     const wrap = el('div', 'uc-mod');
-    const banned = !!(card && card.banned);
+    const banned = !!(card && card.banned) || bannedNow.has(username.toLowerCase());
 
     if (banned) {
       const unban = modButton('Unban', `Lift the ban on ${username}`, 'uc-mod-btn danger');
@@ -1802,6 +1824,9 @@
 
   function onUserBanned(ev) {
     const name = (ev.username || '').toLowerCase();
+    // Before the showModeration check: whether the line is drawn is a display
+    // choice, but who is banned decides which button the user card offers.
+    if (name) bannedNow.add(name);
     for (const row of messagesEl.querySelectorAll('.msg')) {
       if (row.dataset.user === name) markDeleted(row, ev.permanent ? 'banned' : 'timed out');
     }
@@ -1815,6 +1840,7 @@
   }
 
   function onUserUnbanned(ev) {
+    bannedNow.delete((ev.username || '').toLowerCase());
     if (!settings.showModeration) return;
     const by = ev.by ? [' by ', { user: ev.by }] : [];
     eventLine('mod', '🔓', [{ user: ev.username }, ev.permanent ? ' was unbanned' : "'s timeout was lifted", ...by]);
