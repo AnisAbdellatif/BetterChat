@@ -716,7 +716,12 @@
   // just draw the message instead.
   function countRepeat(key) {
     const row = key ? repeatRows.get(key) : null;
-    if (!row || !row.isConnected) {
+    // A row that is still queued for the next frame counts as being there:
+    // rows are registered before they are appended, and appending waits for
+    // an animation frame. Without this, a burst of the same message - which
+    // is exactly what this feature is for - arrives while the first copy is
+    // still detached, reads it as gone, and draws every copy separately.
+    if (!row || (!row.isConnected && !pendingRows.includes(row))) {
       if (key) repeatRows.delete(key);
       return false;
     }
