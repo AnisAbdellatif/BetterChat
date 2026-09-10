@@ -500,6 +500,21 @@
   }
 
   settingsBtn.addEventListener('click', openSettings);
+
+  // Clears what this tab is showing, and nothing more: no request to Kick, no
+  // effect on anyone else's chat. A moderator clearing the channel is a
+  // different thing entirely, and arrives as an event.
+  document.getElementById('clearChat').addEventListener('click', () => {
+    // Rows already queued for the next frame would otherwise land right after
+    // the list was emptied.
+    pendingRows.length = 0;
+    messagesEl.replaceChildren();
+    // Every row these keys stood for has gone, so a later repeat has nothing
+    // to count onto and should start a fresh message.
+    repeatRows.clear();
+    closeUserCard();
+    systemLine('chat cleared');
+  });
   document.getElementById('closeSettings').addEventListener('click', closeSettings);
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) closeSettings();

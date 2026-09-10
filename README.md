@@ -76,6 +76,10 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
 - Status pill when the connection to Kick is down or reconnecting, when the
   chat subscription is pending, or when the channel is offline (live /
   offline changes arrive in real time).
+- A clear button under the gear empties the chat in this tab. It is local
+  only - nothing is sent to Kick and nobody else's chat changes - which is why
+  it is an eraser rather than a bin, next to per-message delete buttons that
+  do act on Kick.
 
 **Per-viewer settings** (gear button, saved in `localStorage`, tabbed)
 
