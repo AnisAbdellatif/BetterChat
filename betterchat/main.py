@@ -2,6 +2,7 @@
 
     GET  /, /<channel>, ...  the chat page (site/), real files served as-is
     GET  /privacy            the privacy policy (site/privacy.html)
+    GET  /sw.js              the service worker, with the site's build hash written in
     POST /api/beat           heartbeat from an open chat tab
     GET  /admin              the stats board (HTTP Basic Auth)
     GET  /admin/api/stats    the JSON the board polls (HTTP Basic Auth)
@@ -22,6 +23,7 @@ Configuration is environment variables:
 
 import asyncio
 import contextlib
+import hashlib
 import json
 import logging
 import os
@@ -78,6 +80,8 @@ SLUG_RE = re.compile(r"^[a-z0-9_\-.]{1,40}$")
 TAB_RE = re.compile(r"^[a-z0-9\-]{8,64}$")
 MAX_MESSAGES_PER_BEAT = 100_000
 SAMPLE_INTERVAL_SEC = 60
+# Written in sw.js, and replaced by the site's build hash as it is served.
+SW_BUILD_PLACEHOLDER = "'__BETTERCHAT_BUILD__'"
 
 # Module level on purpose: FastAPI resolves dependency annotations by name,
 # and a closure-local scheme would not be visible to it.
@@ -208,6 +212,46 @@ def create_app(stats: Stats | None = None, sample_loop: bool = True) -> FastAPI:
     )
     if frame_ancestors:
         log.info("restricting frame-ancestors to %s", frame_ancestors)
+
+    # The service worker names its cache after a hash of the site, written into
+    # the script here as it is served, so a change to any file under site/
+    # retires every viewer's old cache without anything being bumped - see
+    # site/sw.js. sw.js is left out of its own hash: a change to it already
+    # changes the bytes the browser compares.
+    sw_script = site / "sw.js"
+    build_memo: dict = {"signature": None, "hash": ""}
+
+    def site_build() -> str:
+        files = sorted(p for p in site.rglob("*") if p.is_file() and p != sw_script)
+        signature = tuple(
+            (p.relative_to(site).as_posix(), st.st_size, st.st_mtime_ns)
+            for p in files
+            for st in (p.stat(),)
+        )
+        # Rehashed only when a file's size or modification time moves, so a
+        # request normally costs a stat per file. In the image nothing ever
+        # moves, and this hashes once.
+        if signature != build_memo["signature"]:
+            digest = hashlib.sha256()
+            for p in files:
+                digest.update(p.relative_to(site).as_posix().encode())
+                digest.update(b"\0")
+                digest.update(p.read_bytes())
+                digest.update(b"\0")
+            build_memo.update(signature=signature, hash=digest.hexdigest()[:16])
+        return build_memo["hash"]
+
+    @app.get("/sw.js")
+    async def service_worker() -> Response:
+        if not sw_script.is_file():
+            raise HTTPException(status.HTTP_404_NOT_FOUND)
+        body = sw_script.read_text(encoding="utf-8").replace(
+            SW_BUILD_PLACEHOLDER, f"'{site_build()}'", 1
+        )
+        # no-cache: a new hash has to reach the browser as soon as there is one.
+        return Response(
+            body, media_type="application/javascript", headers={"Cache-Control": "no-cache"}
+        )
 
     # Registered before the catch-all on purpose: every unknown path is the
     # chat page, so without this /privacy would be read as a channel slug and

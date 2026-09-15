@@ -1,5 +1,6 @@
 import base64
 import os
+import re
 
 import pytest
 from fastapi.testclient import TestClient
@@ -219,3 +220,28 @@ def test_unknown_build_is_refused(client):
     assert res.status_code == 400
     snap = client.get("/admin/api/stats", headers=auth()).json()
     assert snap["current"]["viewers"] == 0
+
+
+def test_service_worker_gets_the_site_build_written_in(site):
+    """The worker's cache is named after a hash of the site: change a file and
+    every viewer's old cache is retired, with nothing to bump by hand."""
+    (site / "sw.js").write_text("const BUILD = '__BETTERCHAT_BUILD__';\n")
+    app = create_app(Stats(path=None), sample_loop=False)
+    with TestClient(app) as c:
+        first = c.get("/sw.js")
+        assert first.status_code == 200
+        assert "javascript" in first.headers["content-type"]
+        assert first.headers["cache-control"] == "no-cache"
+        assert re.search(r"const BUILD = '[0-9a-f]{16}';", first.text)
+        assert c.get("/sw.js").text == first.text, "nothing changed, same build"
+
+        # A different length, so the change shows whatever the clock's resolution.
+        (site / "app.js").write_text("// js, edited")
+        assert c.get("/sw.js").text != first.text, "an edited file is a new build"
+
+        (site / "defaults.json").write_text("{}")
+        assert c.get("/sw.js").text != first.text, "and so is a new one"
+
+
+def test_service_worker_is_404_without_one(client):
+    assert client.get("/sw.js").status_code == 404

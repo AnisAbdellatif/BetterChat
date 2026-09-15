@@ -13,7 +13,6 @@ test('sanitize: rubbish in, a usable settings object out', () => {
     fontFamily: 'nonsense', // not an offered stack
     timestampFormat: 'iso', // not an option
     deletedMessages: 'burn',
-    dedupeMode: 'shout',
     bgColor: 'red',         // not a hex triple
     monocolorValue: '#ABCDEF',
     mentionMe: '@Some.User!!',
@@ -25,7 +24,6 @@ test('sanitize: rubbish in, a usable settings object out', () => {
   assert.equal(s.fontFamily, S.DEFAULTS.fontFamily);
   assert.equal(s.timestampFormat, S.DEFAULTS.timestampFormat);
   assert.equal(s.deletedMessages, S.DEFAULTS.deletedMessages);
-  assert.equal(s.dedupeMode, S.DEFAULTS.dedupeMode);
   assert.equal(s.bgColor, S.DEFAULTS.bgColor, 'a bad colour keeps the default');
   assert.equal(s.monocolorValue, '#abcdef', 'a good one is lowercased');
   assert.equal(s.mentionMe, 'SomeUser', 'the @ and punctuation go');
@@ -127,4 +125,53 @@ test('fontFamilyCss: a preset, or a cleaned custom name with a fallback', () => 
   });
   assert.equal(/[";{}]/.test(cleaned.customFont), false, 'sanitize strips CSS punctuation');
   assert.equal(/[;{}]/.test(S.fontFamilyCss(cleaned)), false, 'so the value cannot be closed early');
+});
+
+test('defaults.json: loads, passes its own checks, and never opts anyone in', () => {
+  const json = require('../site/defaults.json');
+  assert.deepEqual(S.defaultsProblems(json), [], 'the shipped file is valid');
+  assert.equal('stats' in json, false, 'consent has no default in the file');
+  assert.equal(S.DEFAULTS.stats, 'ask', 'every viewer is asked first');
+  for (const key of S.SETTING_KEYS) assert.ok(key in S.DEFAULTS, `${key} has a default`);
+  assert.ok(Object.isFrozen(S.DEFAULTS), 'shared by every sanitize call, so frozen');
+  assert.ok(Object.isFrozen(S.DEFAULTS.badgeOrder), 'arrays too');
+  const s = S.sanitize({});
+  assert.notEqual(s.badgeOrder, S.DEFAULTS.badgeOrder, 'but a viewer gets copies they can change');
+});
+
+test('defaultsProblems: a bad edit is named, not silently repaired', () => {
+  const good = require('../site/defaults.json');
+  const problems = (patch) => S.defaultsProblems({ ...good, ...patch }).join(' | ');
+  const { fontSize, ...withoutFontSize } = good;
+
+  assert.match(S.defaultsProblems(withoutFontSize).join(), /"fontSize" is missing/);
+  assert.match(problems({ fontSize: 99 }), /"fontSize" must be a whole number from 8 to 40/);
+  assert.match(problems({ fontSize: '20' }), /"fontSize"/, 'a number in quotes is not a number');
+  assert.match(problems({ scrollback: 'yes' }), /"scrollback" must be true or false/);
+  assert.match(problems({ deletedMessages: 'burn' }), /"deletedMessages" must be one of/);
+  assert.match(problems({ bgColor: 'red' }), /"bgColor" must be a colour/);
+  assert.match(problems({ fontFamily: 'toString' }), /"fontFamily"/, 'an inherited name is not a preset');
+  assert.match(problems({ mentionMe: '@me' }), /"mentionMe" must be a username without the @/);
+  assert.match(problems({ hiddenBadges: ['nope'] }), /"hiddenBadges"/);
+  assert.match(problems({ badgeOrder: ['level'] }), /"badgeOrder" must be every badge kind exactly once/);
+  assert.match(problems({ fontSizee: 20 }), /"fontSizee" is not a setting/, 'a typo is caught');
+  assert.match(problems({ stats: 'on' }), /"stats" cannot have a default/);
+  assert.deepEqual(S.defaultsProblems([]), ['it must hold a single JSON object, { ... }']);
+});
+
+test('useDefaults: what the file says is what a new viewer gets', () => {
+  const good = require('../site/defaults.json');
+  try {
+    S.useDefaults({ ...good, fontSize: 14, mentionMe: 'someone', timestamps: true });
+    const fresh = S.sanitize({});
+    assert.equal(fresh.fontSize, 14);
+    assert.equal(fresh.timestamps, true);
+    assert.equal(fresh.mentionMe, 'someone', 'a text default survives a viewer with nothing stored');
+    assert.equal(S.sanitize({ mentionMe: '' }).mentionMe, '', 'and a viewer can still clear it');
+
+    assert.throws(() => S.useDefaults({ ...good, fontSize: 0 }), /fontSize/);
+    assert.equal(S.DEFAULTS.fontSize, 14, 'a rejected file leaves the last good defaults in place');
+  } finally {
+    S.useDefaults(good);
+  }
 });

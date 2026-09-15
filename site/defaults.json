@@ -1,0 +1,33 @@
+{
+  "hiddenBadges": ["level"],
+  "badgeOrder": [
+    "level", "broadcaster", "staff", "moderator", "founder", "og", "vip",
+    "subscriber", "verified", "event", "other", "sub_gifter", "bot"
+  ],
+  "fontSize": 20,
+  "fontFamily": "mono",
+  "customFont": "",
+  "bgColor": "#0b0e0f",
+  "messageGap": 2,
+  "userCards": true,
+  "timestamps": false,
+  "timestampFormat": "hm",
+  "mentionMe": "",
+  "scrollback": true,
+  "historyLimit": 1000,
+  "monocolor": false,
+  "monocolorValue": "#53fc18",
+  "dedupe": true,
+  "dedupeWindowSec": 5,
+  "dedupeRepeats": 1,
+  "collapseEmotes": true,
+  "deletedMessages": "gray",
+  "showModeration": true,
+  "modTools": true,
+  "showPinned": true,
+  "collapsePinned": false,
+  "showSubs": true,
+  "showGifts": true,
+  "showHosts": true,
+  "overlayFadeSec": 0
+}

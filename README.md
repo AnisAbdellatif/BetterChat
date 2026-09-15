@@ -24,7 +24,7 @@ lives in `site/kick.js`.
 ## Layout
 
 ```
-site/          the chat page: index.html, app.js, settings.js, kick.js,
+site/          the chat page: index.html, app.js, settings.js, defaults.json, kick.js,
                config.js, sw.js, privacy.html
 betterchat/    the server: main.py (routes), stats.py (heartbeats -> stats), admin.html
 tests/         pytest (server) + node --test (kick.js, settings.js)
@@ -86,14 +86,16 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
 - Appearance: font size and family (presets or any installed font),
   background color, message spacing, one color for all usernames.
 - Behavior: timestamps and their format, scroll-back through history with a
-  history size, user cards on/off.
+  history size, user cards on/off. Scrolling up holds chat still - nothing
+  moves under what you are reading - and a pill shows how many messages have
+  arrived below, with a click back down to them.
 - Badges: choose which badge kinds are shown, and drag them (or use each
   row's arrows) into the order they are drawn in next to usernames. Badges of
   the same kind keep Kick's own order within it.
-- Filters: act on messages a user repeats within a timespan (per user) -
-  either hide the repeat, or count it onto the copy already on screen as
-  `×2`, `×3` - collapse an emote spammed back-to-back in one message,
-  highlight messages that @mention you.
+- Filters: count a message a user repeats within a timespan (per user) onto
+  the copy already on screen as `×2`, `×3`; draw an emote spammed
+  back-to-back once, with a combo count beside it (`×12`); highlight messages
+  that @mention you.
 - Events: what to do with deleted messages, which moderation / pin / sub /
   gift / host events to show, whether a pinned message starts collapsed, and
   a switch for the moderation controls (shown only where they work).
@@ -135,9 +137,15 @@ per-channel table. HTTP Basic Auth; a 404 until credentials are set.
   - `normalizeMessage` / `normalizeEvent`: Kick's raw payloads into the
     shapes `app.js` renders.
 - `site/settings.js` - the settings model, and the only part of the frontend
-  with no DOM in it: what a setting may hold (`sanitize`), and how it survives
-  a round trip through the URL. Split out so it can be tested on its own, and
-  loaded the same way as `kick.js`.
+  with no DOM in it: which settings exist, what each may hold (`sanitize`),
+  and how they survive a round trip through the URL. Split out so it can be
+  tested on its own, and loaded the same way as `kick.js`.
+- `site/defaults.json` - the starting value of every setting. **Change
+  defaults here**, not in code. It is checked against `settings.js` when the
+  page loads: a missing setting, a misspelt name, a number out of range or an
+  unknown option stops the page with a message naming the setting, and
+  `npm test` catches the same mistakes before a push. The one thing it cannot
+  set is the viewer-count answer: every viewer is asked first.
 - `site/app.js` - rendering, filters, user cards, moderation and overlay mode:
   everything that touches the DOM. `site/config.js` - Kick's public Pusher app
   key and cluster (the same values kick.com ships to every browser).
@@ -171,25 +179,17 @@ it has loaded.
 Navigations are network-first, so a deploy is picked up straight away and
 the cached shell is only used when the origin can't be reached. Scripts are
 stale-while-revalidate: instant from cache, refreshed in the background, so
-a viewer is one load behind at worst. **Bump the version in `site/sw.js` when
-you change a file the worker caches** - the shell, `app.js`, `kick.js`,
-`config.js` - since with no build step and no hashed filenames that constant
-is the only thing that retires an old cache.
+a viewer is one load behind at worst.
 
-The version is two numbers, `v<MAJOR>.<MINOR>`:
-
-- **`MINOR` is the everyday bump.** Edited `app.js`? Bump `MINOR`, nothing
-  else. This is what almost every deploy does.
-- **`MAJOR` is for caching itself changing** - a different set of cached
-  assets, a different strategy, or a shell that an old cached copy could not
-  work with. Bump it and reset `MINOR` to `0`.
-
-The browser only cares that the string differs from the last one, since
-`activate` drops every cache that is not the current one; the split is there
-to keep the routine bump small and to make a real change to the caching
-behaviour stand out in a diff. Editing `sw.js` itself needs no bump:
-browsers compare the worker byte for byte and install a changed one on their
-own.
+There is no version to bump. The server writes a hash of every file under
+`site/` into `sw.js` as it serves it, and the worker names its cache after
+that hash: change any file and the worker's bytes change, the browser
+installs the new worker, and its `activate` drops the old cache. The hash is
+only recomputed when a file's size or modification time moves, so in the
+image it is worked out once. On install the worker fetches its files past the
+HTTP cache (`cache: 'reload'`), so a build's cache holds that build's files.
+Served from a plain static host instead, the placeholder stays as written and
+the worker simply never retires its cache on its own.
 
 `/privacy` is deliberately left to the network. Navigations are cached under
 one fixed shell key, so caching the policy would overwrite the chat page an

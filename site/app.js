@@ -1,4 +1,7 @@
-(function () {
+// The page starts once defaults.json has arrived (settings.js fetches it):
+// every setting's starting value comes from there. If it cannot be had, the
+// handler at the very bottom says so on the page.
+BetterChatSettings.ready.then(function () {
   'use strict';
 
   const messagesEl = document.getElementById('messages');
@@ -42,7 +45,7 @@
   // as when it was all one.
   const {
     SETTINGS_KEY, LEGACY_SETTINGS_KEY, PINNED_HISTORY, KICK_GREEN, FONT_STACKS,
-    BADGE_KINDS, BADGE_LABELS, DELETED_MODES, DEDUPE_MODES, STATS_CHOICES,
+    BADGE_KINDS, BADGE_LABELS, DELETED_MODES, STATS_CHOICES,
     TIMESTAMP_FORMATS, DEFAULTS, NOT_SHAREABLE, HEX6,
     cleanFontName, cleanUsername, clampInt, oneOf, sanitize,
     settingsFromQuery, settingsAsParams, fontFamilyCss,
@@ -97,6 +100,12 @@
 
   // Re-applies everything that affects messages already on screen.
   function applySettings() {
+    // Font, spacing and timestamps all change row heights, so a viewer who
+    // has scrolled up keeps their place through a change made while reading.
+    keepingView(applySettingsNow);
+  }
+
+  function applySettingsNow() {
     document.documentElement.style.setProperty('--chat-font-size', `${settings.fontSize}px`);
     document.documentElement.style.setProperty('--chat-font-family', fontFamilyCss(settings));
     // Overlay mode keeps a transparent body regardless (body.overlay CSS).
@@ -112,6 +121,7 @@
     applyPinVisibility();
     applyBeats();
     showConsentIfUnanswered();
+    updateJumpPill(); // scrollback may have just been turned off
   }
 
   // Everything on an existing message that a setting can change, in one walk
@@ -149,13 +159,16 @@
   // so it must not go through applySettings and walk the list. Pins arrive on
   // every reconnect, and the list can hold thousands of rows.
   function applyPinVisibility() {
-    // A live pin the viewer has hidden is not gone: the banner goes away and
-    // the button under the gear appears to bring it back.
-    const live = settings.showPinned && pinnedActive;
-    pinnedEl.hidden = !live || pinHidden;
-    showPinBtn.hidden = !live || !pinHidden;
-    document.body.classList.toggle('has-pin', !pinnedEl.hidden);
-    stickIfFollowing();
+    // The banner pads the top of the list, so a viewer scrolled up keeps
+    // their place when it comes or goes.
+    keepingView(() => {
+      // A live pin the viewer has hidden is not gone: the banner goes away and
+      // the button under the gear appears to bring it back.
+      const live = settings.showPinned && pinnedActive;
+      pinnedEl.hidden = !live || pinHidden;
+      showPinBtn.hidden = !live || !pinHidden;
+      document.body.classList.toggle('has-pin', !pinnedEl.hidden);
+    });
   }
 
   // ---------------------------------------------------------------------
@@ -512,6 +525,9 @@
     // Every row these keys stood for has gone, so a later repeat has nothing
     // to count onto and should start a fresh message.
     repeatRows.clear();
+    // Nothing is left to have scrolled up through.
+    stickToBottom = true;
+    updateJumpPill();
     closeUserCard();
     systemLine('chat cleared');
   });
@@ -527,27 +543,131 @@
   // Message list
   // ---------------------------------------------------------------------
 
-  function isNearBottom() {
-    return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 40;
+  // ---------------------------------------------------------------------
+  // Following the newest message, and holding still when the viewer scrolls
+  // up to read.
+  //
+  // `stickToBottom` is the viewer's intention, latched rather than measured
+  // again on every append (one bad reading used to leave the view off the
+  // bottom, which made every later reading bad too). Only the viewer moving
+  // the list changes it:
+  //   - any movement up lets go. An upward wheel lets go before the scroll
+  //     even lands: with smooth scrolling, the first scroll event can arrive
+  //     after an append has already pulled the view back down, and on a busy
+  //     chat that meant never getting away from the bottom at all. A button
+  //     or finger held down on the list (dragging the scrollbar, a touch
+  //     scroll, selecting text) holds it for as long as it stays down, for
+  //     the same reason.
+  //   - reaching the bottom again, or scrolling down to within a line of it,
+  //     takes hold again.
+  // Scrolls this code makes itself are recognised by where they land, and
+  // ignored.
+  //
+  // Holding also means the list does not move under the reader. Anything
+  // that can take rows away or resize them goes through keepingView(), which
+  // puts the row being read back where it was on screen. And while held, old
+  // rows are kept up to twice the history size instead of being trimmed from
+  // under the reader; the first append after they return trims back to size.
+  // ---------------------------------------------------------------------
+
+  const NEAR_BOTTOM_PX = 40;
+  let stickToBottom = true;
+  let pointerDown = false;
+  // Where this code last put scrollTop. A scroll event landing there is ours.
+  let ownScrollTop = -1;
+  let lastScrollTop = 0;
+
+  function following() {
+    return !scrollbackEnabled() || (stickToBottom && !pointerDown);
   }
 
-  // Whether new messages pull the view down with them. This is a latched
-  // intention, not a measurement taken at append time. Re-deriving it from
-  // the layout on every flush was self-defeating: one reading that came back
-  // false left the view sitting away from the bottom, which made the next
-  // reading false as well, so autoscroll stayed off until the viewer
-  // scrolled back down by hand. Only the viewer changes it now.
-  let stickToBottom = true;
+  // The pill that shows while chat is held: how many messages have arrived
+  // below since the viewer scrolled up, and a way straight back down to them.
+  const jumpBtn = document.getElementById('jumpLatest');
+  let unseenMessages = 0;
+
+  function updateJumpPill() {
+    const held = scrollbackEnabled() && !stickToBottom;
+    if (!held) unseenMessages = 0;
+    jumpBtn.hidden = !held;
+    if (!held) return;
+    // Clear of whatever else shares the bottom centre: the status pill, and
+    // the consent banner while it is still waiting for an answer - it sits
+    // on top, so the pill would otherwise be hidden under it on a first visit.
+    let bottom = 10;
+    if (!statusPill.hidden) bottom += 34;
+    if (!consentEl.hidden) {
+      bottom = Math.max(bottom, window.innerHeight - consentEl.getBoundingClientRect().top + 8);
+    }
+    jumpBtn.style.bottom = `${bottom}px`;
+    const n = unseenMessages;
+    jumpBtn.textContent = n
+      ? `${n > 999 ? '999+' : n} new message${n === 1 ? '' : 's'} ↓`
+      : 'Jump to latest ↓';
+  }
+
+  jumpBtn.addEventListener('click', () => {
+    stickToBottom = true;
+    // Trims what was kept while held and lands on the bottom.
+    keepingView(trimHistory);
+    updateJumpPill();
+  });
+
+  function setScrollTop(top) {
+    messagesEl.scrollTop = top;
+    ownScrollTop = messagesEl.scrollTop; // as the browser clamped it
+    lastScrollTop = ownScrollTop;
+  }
 
   function stickIfFollowing() {
-    if (!scrollbackEnabled() || stickToBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+    if (following()) setScrollTop(messagesEl.scrollHeight);
   }
 
-  // Our own scrolls land at the bottom, so the event they cause re-asserts
-  // the latch rather than breaking it - no guard needed for them here.
   messagesEl.addEventListener('scroll', () => {
-    stickToBottom = isNearBottom();
+    const top = messagesEl.scrollTop;
+    if (Math.abs(top - ownScrollTop) <= 1) return;
+    // The position is the viewer's from here on, so coming back to this same
+    // spot later is not mistaken for one of ours.
+    ownScrollTop = -1;
+    const movedUp = top < lastScrollTop;
+    lastScrollTop = top;
+    const distance = messagesEl.scrollHeight - top - messagesEl.clientHeight;
+    if (distance <= 1 || (!movedUp && distance < NEAR_BOTTOM_PX)) stickToBottom = true;
+    else if (movedUp) stickToBottom = false;
+    updateJumpPill();
   }, { passive: true });
+
+  messagesEl.addEventListener('wheel', (e) => {
+    // Only when the list can actually go up: a wheel on a list already at its
+    // top, or too short to scroll, moves nothing and must not stop following.
+    if (e.deltaY < 0 && !e.ctrlKey && messagesEl.scrollTop > 0) {
+      stickToBottom = false;
+      updateJumpPill();
+    }
+  }, { passive: true });
+
+  function pressList() {
+    pointerDown = true;
+  }
+
+  function releaseList() {
+    if (!pointerDown) return;
+    pointerDown = false;
+    // Whatever arrived while it was held lands now, if still following.
+    stickIfFollowing();
+  }
+
+  messagesEl.addEventListener('mousedown', pressList);
+  messagesEl.addEventListener('touchstart', pressList, { passive: true });
+  window.addEventListener('mouseup', releaseList);
+  window.addEventListener('touchend', releaseList, { passive: true });
+  window.addEventListener('touchcancel', releaseList, { passive: true });
+  window.addEventListener('blur', releaseList);
+  // A release outside the frame may never reach it; the next move with no
+  // button down settles that.
+  messagesEl.addEventListener('mousemove', (e) => {
+    if (pointerDown && e.buttons === 0) releaseList();
+  });
 
   // kick.com resizes the frame - theater mode, a collapsed sidebar, the
   // window itself - which changes clientHeight without firing any scroll
@@ -556,8 +676,51 @@
     new ResizeObserver(stickIfFollowing).observe(messagesEl);
   }
 
+  // How many rows from the top of the view are remembered, so the view can
+  // still be put back when the row at the very top is the one taken away.
+  const ANCHOR_SPAN = 20;
+
+  // Runs a change that may remove or resize rows, then puts the view back:
+  // on the bottom when following; otherwise on the same row, at the same
+  // height on screen.
+  function keepingView(change) {
+    if (following()) {
+      change();
+      stickIfFollowing();
+      return;
+    }
+    const anchors = rowsAtTop();
+    change();
+    for (const { row, top } of anchors) {
+      if (!row.isConnected) continue;
+      const moved = row.getBoundingClientRect().top - top;
+      if (moved) setScrollTop(messagesEl.scrollTop + moved);
+      return;
+    }
+  }
+
+  // The first row reaching into the view, and a few after it, each with where
+  // it is. Rows are stacked in order, so a binary search finds the first.
+  function rowsAtTop() {
+    const rows = messagesEl.children;
+    if (!rows.length) return [];
+    const viewTop = messagesEl.getBoundingClientRect().top;
+    let lo = 0;
+    let hi = rows.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (rows[mid].getBoundingClientRect().bottom <= viewTop) lo = mid + 1;
+      else hi = mid;
+    }
+    const out = [];
+    for (let i = lo; i < rows.length && out.length < ANCHOR_SPAN; i++) {
+      out.push({ row: rows[i], top: rows[i].getBoundingClientRect().top });
+    }
+    return out;
+  }
+
   function trimHistory() {
-    const limit = historyLimit();
+    const limit = following() ? historyLimit() : historyLimit() * 2;
     while (messagesEl.childElementCount > limit) {
       messagesEl.removeChild(messagesEl.firstElementChild);
     }
@@ -573,9 +736,8 @@
   }
 
   // Messages arrive in bursts - a busy channel can land several in a single
-  // frame - and appending one at a time cost two forced layouts each:
-  // isNearBottom() reads scrollTop/scrollHeight, then the scroll write reads
-  // scrollHeight again. Queue instead and flush once per frame through a
+  // frame - and appending one at a time cost a forced layout each for the
+  // scroll that follows. Queue instead and flush once per frame through a
   // fragment, so a burst costs one layout however many messages it carries.
   let pendingRows = [];
   let flushFrame = 0;
@@ -591,9 +753,14 @@
     const frag = document.createDocumentFragment();
     for (const row of rows) frag.appendChild(row);
     messagesEl.appendChild(frag);
-    trimHistory();
+    if (scrollbackEnabled() && !stickToBottom) {
+      for (const row of rows) if (row.classList.contains('msg')) unseenMessages++;
+      updateJumpPill();
+    }
+    // New rows go in below the view, so they never move what is being read;
+    // trimming old ones off the top can.
+    keepingView(trimHistory);
     for (const row of rows) scheduleFade(row);
-    stickIfFollowing();
   }
 
   function appendRow(row) {
@@ -655,13 +822,14 @@
   }
 
   // ---------------------------------------------------------------------
-  // Repeated-message filter (per user)
+  // Repeated messages (per user)
   //
   // Keyed on user + normalized content (case/whitespace-insensitive, so
-  // "Pog Pog" and "pog  pog" count as the same message). A message is
-  // hidden once the SAME user has already posted it `dedupeRepeats` times
-  // inside the last `dedupeWindowSec` seconds; other users posting the
-  // same text are unaffected.
+  // "Pog Pog" and "pog  pog" count as the same message). Once the SAME user
+  // has posted it `dedupeRepeats` times inside the last `dedupeWindowSec`
+  // seconds, a further copy is counted onto the one on screen (x2, x3, ...)
+  // instead of being drawn again; other users posting the same text are
+  // unaffected.
   // ---------------------------------------------------------------------
 
   const recentMessages = new Map(); // "user\ncontent" -> [timestamps]
@@ -950,15 +1118,10 @@
   // Message content
   // ---------------------------------------------------------------------
 
-  // Kick's raw message content embeds emotes as "[emote:<id>:<name>]" rather
-  // than pre-rendered <img> tags - the kick.com frontend's own JS parses
-  // this placeholder syntax before display, and since we're bypassing that
-  // frontend entirely, we have to do the same parsing ourselves.
-  const EMOTE_PATTERN = /\[emote:(\d+):([^\]]*)\]/g;
-
-  // "[emote:1:a] [emote:1:a][emote:1:a]" -> "[emote:1:a]". Consecutive
-  // repeats of the same emote (whitespace between them or not) become one,
-  // which covers the "message is just one emote spammed N times" case.
+  // Emote placeholders are parsed in kick.js (parseContent), where the syntax
+  // is tested. This is only for comparing messages: "[emote:1:a]
+  // [emote:1:a][emote:1:a]" -> "[emote:1:a]", so the repeat counter treats a
+  // run of one emote as the same message however long the run is.
   const REPEATED_EMOTE = /(\[emote:(\d+):[^\]]*\])(?:\s*\[emote:\2:[^\]]*\])+/g;
 
   function collapseRepeatedEmotes(content) {
@@ -1115,28 +1278,28 @@
   // controllable input (any Kick user can type it), so it must never be
   // parsed as HTML.
   function appendMessageContent(container, content) {
-    EMOTE_PATTERN.lastIndex = 0;
-    let lastIndex = 0;
-    let match;
-
-    while ((match = EMOTE_PATTERN.exec(content)) !== null) {
-      if (match.index > lastIndex) {
-        appendTextWithMentions(container, content.slice(lastIndex, match.index));
+    const parts = BetterChatKick.parseContent(content, { combine: settings.collapseEmotes });
+    for (const part of parts) {
+      if (part.type === 'text') {
+        appendTextWithMentions(container, part.text);
+        continue;
       }
-
-      const [, emoteId, emoteName] = match;
       const img = document.createElement('img');
       img.className = 'emote';
-      img.src = `https://files.kick.com/emotes/${emoteId}/fullsize`;
-      img.alt = emoteName;
-      img.title = emoteName;
-      container.appendChild(img);
-
-      lastIndex = EMOTE_PATTERN.lastIndex;
-    }
-
-    if (lastIndex < content.length) {
-      appendTextWithMentions(container, content.slice(lastIndex));
+      img.src = `https://files.kick.com/emotes/${part.id}/fullsize`;
+      img.alt = part.name;
+      img.title = part.name;
+      if (part.count === 1) {
+        container.appendChild(img);
+        continue;
+      }
+      // One emote spammed back to back: drawn once, with its count beside it
+      // combo-style. Wrapped together so the count can never wrap onto a line
+      // of its own, away from its emote.
+      const combo = el('span', 'emote-combo');
+      combo.appendChild(img);
+      combo.appendChild(el('span', 'combo-count', `×${part.count}`));
+      container.appendChild(combo);
     }
   }
 
@@ -1168,13 +1331,15 @@
   function appendMessage(msg) {
     recordUserHistory(msg);
 
-    // Collapse first so the repeat filter compares what would be displayed:
-    // "KEKW KEKW KEKW" and "KEKW KEKW" are the same message once collapsed.
-    const content = settings.collapseEmotes ? collapseRepeatedEmotes(msg.content) : msg.content;
-    const { key: repeatKey, repeat } = repeatState(msg.username, content);
-    // In "count" mode a repeat is added to the message already on screen; if
-    // that message is gone, countRepeat says so and this one is drawn fresh.
-    if (repeat && (settings.dedupeMode !== 'count' || countRepeat(repeatKey))) return;
+    // With emotes combined, "KEKW KEKW KEKW" and "KEKW KEKW" draw as the same
+    // emote with a different count, so they count as the same message too.
+    const compared = settings.collapseEmotes ? collapseRepeatedEmotes(msg.content) : msg.content;
+    const { key: repeatKey, repeat } = repeatState(msg.username, compared);
+    // A repeat is added to the copy already on screen. If that copy is gone -
+    // trimmed out of history, say - countRepeat says so and this one is drawn
+    // fresh instead.
+    if (repeat && countRepeat(repeatKey)) return;
+    const content = msg.content;
 
     const row = document.createElement('div');
     row.className = 'msg';
@@ -1221,8 +1386,8 @@
     if (modEnabled()) row.appendChild(deleteButton());
 
     // This row now stands for the key, so a later repeat counts onto it.
-    // Registered whatever the mode is, so switching to counting mid-stream
-    // works on the messages already there.
+    // Registered even with counting off, so turning it on mid-stream works on
+    // the messages already there.
     if (repeatKey) repeatRows.set(repeatKey, row);
 
     appendRow(row);
@@ -1760,6 +1925,16 @@
   const pinnedEl = document.getElementById('pinned');
   const pinContent = document.getElementById('pinContent');
   const showPinBtn = document.getElementById('showPin');
+
+  // The list's top padding follows the banner's real height, so a pin that
+  // runs to several lines never sits over the first messages.
+  if (typeof ResizeObserver === 'function') {
+    new ResizeObserver(() => {
+      keepingView(() => {
+        document.documentElement.style.setProperty('--pin-height', `${pinnedEl.offsetHeight}px`);
+      });
+    }).observe(pinnedEl);
+  }
   let pinnedActive = false;
   // Collapsed rather than dismissed: the pin is still live and can be brought
   // back. Set afresh by each new pin, either open or collapsed depending on
@@ -1882,6 +2057,7 @@
     statusPill.textContent = text;
     statusPill.className = cls;
     statusPill.hidden = !text;
+    updateJumpPill(); // the two pills share the bottom centre
   }
 
   function onStreamLive(ev) {
@@ -1916,7 +2092,8 @@
     // Deletions and bans look rows up in the DOM, so anything still queued
     // for this frame has to land first or it would be missed.
     flushRows();
-    handler(ev);
+    // A deletion above the view must not move what the viewer is reading.
+    keepingView(() => handler(ev));
   }
 
   // ---------------------------------------------------------------------
@@ -2154,9 +2331,11 @@
     'serviceWorker' in navigator &&
     (location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname))
   ) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js').catch(() => {});
-    });
+    const register = () => navigator.serviceWorker.register('/sw.js').catch(() => {});
+    // This code runs once defaults.json is in, which can be after the load
+    // event has already fired.
+    if (document.readyState === 'complete') register();
+    else window.addEventListener('load', register);
   }
 
   document.body.classList.toggle('overlay', overlayMode);
@@ -2164,4 +2343,13 @@
   initModeration();
   if (slug) watch(slug);
   else showHint();
-})();
+}, function (err) {
+  // Without defaults.json there are no settings to start from. Say so on the
+  // page, where whoever just edited that file is looking, and not only in the
+  // console.
+  console.error(err);
+  const line = document.createElement('div');
+  line.className = 'system error';
+  line.textContent = `BetterChat could not start: ${(err && err.message) || err}`;
+  document.getElementById('messages').appendChild(line);
+});

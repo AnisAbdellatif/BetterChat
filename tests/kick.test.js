@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeMessage, normalizeEvent, buildPin, KickApi, PusherRelay, EVENTS } = require('../site/kick.js');
+const { normalizeMessage, normalizeEvent, buildPin, parseContent, KickApi, PusherRelay, EVENTS } = require('../site/kick.js');
 
 // Payloads captured live from chatrooms.668.v2 on 2026-09-08.
 const reply = {
@@ -259,4 +259,32 @@ test('KickApi.verifyUser: a failing request throws instead of caching a "no"', a
   await assert.rejects(() => api.verifyUser('xqc', 'someone'));
   await assert.rejects(() => api.verifyUser('xqc', 'someone'));
   assert.equal(calls, 2, 'asked again rather than remembered as "not a user"');
+});
+
+test('parseContent: text and emotes, and a run of one emote combined', () => {
+  const e = (id, name, count = 1) => ({ type: 'emote', id, name, count });
+  const t = (text) => ({ type: 'text', text });
+
+  assert.deepEqual(parseContent('hi [emote:1:a] there'), [t('hi '), e('1', 'a'), t(' there')]);
+  assert.deepEqual(parseContent(''), []);
+  assert.deepEqual(parseContent(undefined), [], 'not a string is no content, not a crash');
+
+  const spam = '[emote:7:KEKW] [emote:7:KEKW][emote:7:KEKW]';
+  assert.deepEqual(
+    parseContent(spam),
+    [e('7', 'KEKW'), t(' '), e('7', 'KEKW'), e('7', 'KEKW')],
+    'left as it is without combine'
+  );
+  assert.deepEqual(parseContent(spam, { combine: true }), [e('7', 'KEKW', 3)], 'one emote, x3');
+
+  assert.deepEqual(
+    parseContent('lol [emote:7:KEKW] [emote:7:KEKW] [emote:9:b] [emote:7:KEKW]', { combine: true }),
+    [t('lol '), e('7', 'KEKW', 2), t(' '), e('9', 'b'), t(' '), e('7', 'KEKW')],
+    'only an unbroken run combines; a different emote ends it'
+  );
+  assert.deepEqual(
+    parseContent('[emote:7:KEKW] and [emote:7:KEKW]', { combine: true }),
+    [e('7', 'KEKW'), t(' and '), e('7', 'KEKW')],
+    'text between two copies keeps them apart'
+  );
 });

@@ -63,7 +63,9 @@
   /* "Scroll back through history" off: the list is always pinned to the
      newest message and can't be scrolled. */
   body.no-scrollback #messages { overflow-y: hidden; }
-  body.has-pin #messages { padding-top: 3.2em; }
+  /* Room for the pinned banner, at its real height (app.js keeps --pin-height
+     current), so a long pin never covers the first messages. */
+  body.has-pin #messages { padding-top: calc(var(--pin-height, 2.6em) + 12px); }
 
   .msg { padding: 2px 4px; border-radius: 4px; transition: opacity 0.4s; }
   .msg:hover { background: rgba(255, 255, 255, 0.04); }
@@ -293,6 +295,18 @@
     vertical-align: middle;
     margin: -4px 1px;
   }
+  /* One emote spammed back to back, drawn once with its count: KEKW ×12. */
+  .emote-combo { white-space: nowrap; }
+  .combo-count {
+    margin: 0 0.3em 0 0.1em;
+    color: #53fc18;
+    font-weight: 800;
+    font-style: italic;
+    font-size: 0.9em;
+    vertical-align: middle;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 6px rgba(83, 252, 24, 0.45);
+  }
   .system {
     color: #adadb8;
     font-style: italic;
@@ -342,7 +356,21 @@
   }
   #pinned[hidden] { display: none; }
   #pinned .pin-icon { flex: 0 0 auto; }
-  #pinned .pin-body { flex: 1 1 auto; min-width: 0; }
+  /* The body scrolls inside the banner rather than spilling out of it: a long
+     pin stays within a few lines, and unbroken text (links, spam) wraps
+     instead of running past the edge. Icon and close button stay put. */
+  #pinned .pin-body {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-height: min(40vh, 7.5em);
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  }
+  /* The list's emotes sit on negative margins, which would poke out past the
+     banner's padding. */
+  #pinned .emote { height: 1.5em; margin: -2px 1px; }
   #pinned .pin-label { color: #adadb8; font-size: 0.85em; margin-right: 0.4em; }
   #pinned .user { font-weight: 700; }
   #closePin {
@@ -424,6 +452,30 @@
     text-overflow: ellipsis;
   }
   #statusPill[hidden] { display: none; }
+  /* Shown while chat is held because the viewer scrolled up: how much has
+     arrived below, and a click back down to it. app.js sets `bottom` so it
+     stays clear of the status pill and the consent banner. */
+  #jumpLatest {
+    position: fixed;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 7;
+    padding: 5px 14px;
+    border-radius: 999px;
+    background: #1b2126;
+    border: 1px solid rgba(83, 252, 24, 0.55);
+    color: #efeff1;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  #jumpLatest:hover, #jumpLatest:focus-visible { background: #232b31; border-color: #53fc18; }
+  #jumpLatest[hidden] { display: none; }
+  body.overlay #jumpLatest { display: none; }
   #statusPill::before {
     content: "";
     display: inline-block;
@@ -730,6 +782,8 @@
 
   <div id="statusPill" hidden role="status" aria-live="polite"></div>
 
+  <button id="jumpLatest" type="button" hidden aria-live="polite"></button>
+
   <!-- Asked once, on the first visit. Until it is answered nothing is sent. -->
   <div id="consent" hidden role="dialog" aria-labelledby="consentTitle" aria-describedby="consentText">
     <div class="consent-text">
@@ -886,28 +940,23 @@
       <div class="tab-panel" data-tab-panel="filters" role="tabpanel" hidden>
         <div class="setting">
           <label class="toggle-row">
-            <span><span class="label">Filter messages a user repeats</span>
-              <div class="desc">Acts when the same user posts the same message (text or emotes) again soon after. Other users posting the same thing are not affected.</div></span>
+            <span><span class="label">Count messages a user repeats</span>
+              <div class="desc">When the same user posts the same message (text or emotes) again soon after, it is counted onto the copy already on screen as &times;2, &times;3, ... instead of being shown again. Other users posting the same thing are not affected.</div></span>
             <input type="checkbox" data-setting="dedupe" /><span class="switch"></span>
           </label>
           <div class="sub" data-sub="dedupe">
-            <label for="dedupeMode">What to do with the repeat</label>
-            <select id="dedupeMode" data-setting="dedupeMode">
-              <option value="hide">Hide it</option>
-              <option value="count">Count it on the first copy (&times;2, &times;3, ...)</option>
-            </select>
             <label for="dedupeWindow">Timespan (seconds)</label>
             <input id="dedupeWindow" type="number" min="1" max="3600" step="1" data-setting="dedupeWindowSec" />
-            <label for="dedupeRepeats">Times a user may post it before that applies</label>
+            <label for="dedupeRepeats">Times a user may post it before it is counted</label>
             <input id="dedupeRepeats" type="number" min="1" max="100" step="1" data-setting="dedupeRepeats" />
-            <div class="field-desc">1 = the first copy is shown and every repeat within the timespan is filtered. 2 = the first two are shown, and so on.</div>
+            <div class="field-desc">1 = the first copy is shown and every repeat within the timespan is counted onto it. 2 = the first two are shown, and so on.</div>
           </div>
         </div>
 
         <div class="setting">
           <label class="toggle-row">
-            <span><span class="label">Collapse repeated emotes</span>
-              <div class="desc">The same emote spammed back-to-back in one message is shown once.</div></span>
+            <span><span class="label">Combine repeated emotes</span>
+              <div class="desc">The same emote spammed back-to-back in one message is shown once, with a count beside it (&times;12).</div></span>
             <input type="checkbox" data-setting="collapseEmotes" /><span class="switch"></span>
           </label>
         </div>

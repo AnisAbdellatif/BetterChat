@@ -6,10 +6,35 @@
 // piece worth testing directly, and keeps app.js to what it does with the
 // DOM. Same shape as kick.js - a classic <script> in the browser, and
 // require()-able from Node for the tests.
+//
+// The starting value of every setting lives in defaults.json, beside this
+// file, so defaults can be changed without touching code. This file still
+// decides which settings exist and what each may hold; defaults.json is
+// checked against that when it loads, and a mistake in it stops the page with
+// a message naming the setting rather than letting it half-work.
+//
+// `ready` resolves once defaults.json is in. In Node it is read on the spot;
+// in the browser it has to be fetched, so app.js waits on `ready` to start.
 (function (root, factory) {
   const api = factory();
-  if (typeof module !== 'undefined' && module.exports) module.exports = api;
-  else root.BetterChatSettings = api;
+  if (typeof module !== 'undefined' && module.exports) {
+    api.useDefaults(require('./defaults.json'));
+    api.ready = Promise.resolve(api);
+    module.exports = api;
+  } else {
+    root.BetterChatSettings = api;
+    api.ready = fetch('/defaults.json')
+      .then((res) => {
+        if (!res.ok) throw new Error(`defaults.json could not be loaded (HTTP ${res.status})`);
+        return res.json().catch((err) => {
+          throw new Error(`defaults.json is not valid JSON: ${err.message}`);
+        });
+      })
+      .then((json) => {
+        api.useDefaults(json);
+        return api;
+      });
+  }
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
   // Kick's own green, the accent this page is built around.
@@ -49,9 +74,6 @@
   ]);
 
   const DELETED_MODES = Object.freeze(['gray', 'remove', 'keep']);
-  // What to do with a message the filter counts as a repeat: drop it, or add
-  // it to the copy already on screen as "xN".
-  const DEDUPE_MODES = Object.freeze(['hide', 'count']);
   // The anonymous viewer count. "ask" is the state before the viewer has
   // answered the banner, and is why this is not simply a boolean: a decline
   // has to be distinguishable from a question not yet put.
@@ -75,46 +97,58 @@
     other: 'Unknown badge types',
   });
 
-  const DEFAULTS = Object.freeze({
-    hiddenBadges: ['level'],
-    // The order badges are drawn in, left to right. Not Kick's own order:
-    // rank first, then the flavour badges. Must name every kind in
-    // BADGE_KINDS - sanitize appends any that are missing.
-    badgeOrder: [
-      'level', 'broadcaster', 'staff', 'moderator', 'founder', 'og', 'vip',
-      'subscriber', 'verified', 'event', 'other', 'sub_gifter', 'bot',
-    ],
-    fontSize: 20,
-    fontFamily: 'mono',
-    customFont: '',
-    bgColor: '#0b0e0f',
-    messageGap: 2,
-    userCards: true,
-    timestamps: false,
-    timestampFormat: 'hm',
-    mentionMe: '',
-    scrollback: true,
-    historyLimit: 1000,
-    monocolor: false,
-    monocolorValue: KICK_GREEN,
-    dedupe: true,
-    dedupeWindowSec: 5,
-    dedupeRepeats: 1,
-    dedupeMode: 'hide',
-    stats: 'ask',
-    collapseEmotes: true,
-    deletedMessages: 'gray',
-    showModeration: true,
+  // Which settings exist and what each may hold. sanitize reads these for a
+  // viewer's stored or linked settings, and defaultsProblems reads the same
+  // tables for defaults.json, so every rule is written down once.
+  //
+  // Adding a setting: give it a default in defaults.json and an entry here.
+  const BOOLEAN_KEYS = Object.freeze([
+    'userCards', 'timestamps', 'scrollback', 'monocolor', 'dedupe',
+    'collapseEmotes', 'showModeration',
     // The moderation controls themselves, where they are possible at all.
-    modTools: true,
-    showPinned: true,
+    'modTools',
+    'showPinned',
     // Pinned messages arrive collapsed, and only open when the viewer says so.
-    collapsePinned: false,
-    showSubs: true,
-    showGifts: true,
-    showHosts: true,
-    overlayFadeSec: 0,
+    'collapsePinned',
+    'showSubs', 'showGifts', 'showHosts',
+  ]);
+  const NUMBER_RANGES = Object.freeze({
+    fontSize: [8, 40],
+    messageGap: [0, 40],
+    historyLimit: [10, 5000],
+    dedupeWindowSec: [1, 3600],
+    dedupeRepeats: [1, 100],
+    overlayFadeSec: [0, 600],
   });
+  const CHOICE_KEYS = Object.freeze({
+    timestampFormat: TIMESTAMP_FORMATS,
+    deletedMessages: DELETED_MODES,
+  });
+  const COLOR_KEYS = Object.freeze(['bgColor', 'monocolorValue']);
+  // Free text: cleaned rather than checked against a list.
+  const TEXT_KEYS = Object.freeze({
+    customFont: { clean: cleanFontName, what: 'a font name (letters, digits, spaces and -)' },
+    mentionMe: { clean: cleanUsername, what: 'a username without the @' },
+  });
+  // fontFamily, hiddenBadges and badgeOrder have rules of their own, below.
+  // badgeOrder is the order badges are drawn in, left to right, and has to
+  // name every kind in BADGE_KINDS exactly once.
+  const SETTING_KEYS = Object.freeze([
+    ...BOOLEAN_KEYS,
+    ...Object.keys(NUMBER_RANGES),
+    ...Object.keys(CHOICE_KEYS),
+    ...COLOR_KEYS,
+    ...Object.keys(TEXT_KEYS),
+    'fontFamily', 'hiddenBadges', 'badgeOrder',
+  ]);
+
+  // The anonymous viewer count is not a preference with a default: it is a
+  // question each viewer answers. Everyone starts at "ask" whatever
+  // defaults.json says, and defaults.json may not mention it at all -
+  // otherwise a single edit could opt every viewer in without asking.
+  const CONSENT_DEFAULT = 'ask';
+
+  let DEFAULTS = null;
 
   const HEX6 = /^#[0-9a-f]{6}$/i;
 
@@ -140,13 +174,21 @@
     return allowed.includes(value) ? value : fallback;
   }
 
+  const isFontKey = (value) =>
+    value === 'custom' || Object.prototype.hasOwnProperty.call(FONT_STACKS, value);
+
   // Never trust what's in storage or the URL blindly - it's validated field
-  // by field, and unknown keys are dropped.
+  // by field, and unknown keys are dropped. Arrays always come back as fresh
+  // copies: DEFAULTS is frozen and shared.
   function sanitize(raw) {
-    const s = { ...DEFAULTS };
+    const s = {
+      ...DEFAULTS,
+      hiddenBadges: [...DEFAULTS.hiddenBadges],
+      badgeOrder: [...DEFAULTS.badgeOrder],
+    };
     if (!raw || typeof raw !== 'object') return s;
-    for (const key of Object.keys(DEFAULTS)) {
-      if (typeof DEFAULTS[key] === 'boolean' && typeof raw[key] === 'boolean') s[key] = raw[key];
+    for (const key of BOOLEAN_KEYS) {
+      if (typeof raw[key] === 'boolean') s[key] = raw[key];
     }
     if (Array.isArray(raw.hiddenBadges)) {
       s.hiddenBadges = BADGE_KINDS.filter((kind) => raw.hiddenBadges.includes(kind));
@@ -154,7 +196,7 @@
     // A stored order can be stale (a kind added since it was saved), short, or
     // simply junk from a hand-edited URL, so rebuild it as a real permutation
     // of BADGE_KINDS: the kinds it names, in its order, then whatever it left
-    // out in the default order. Always a fresh array - DEFAULTS is shared.
+    // out in the default order.
     const placed = new Set();
     const order = [];
     const take = (kinds) => {
@@ -169,26 +211,96 @@
     take(DEFAULTS.badgeOrder);
     take(BADGE_KINDS); // backstop, in case a kind is missing from the default
     s.badgeOrder = order;
-    s.fontSize = clampInt(raw.fontSize, 8, 40, DEFAULTS.fontSize);
-    s.messageGap = clampInt(raw.messageGap, 0, 40, DEFAULTS.messageGap);
-    if (raw.fontFamily === 'custom' || FONT_STACKS[raw.fontFamily]) s.fontFamily = raw.fontFamily;
-    s.customFont = cleanFontName(raw.customFont);
-    s.timestampFormat = oneOf(raw.timestampFormat, TIMESTAMP_FORMATS, DEFAULTS.timestampFormat);
-    s.mentionMe = cleanUsername(raw.mentionMe);
-    s.historyLimit = clampInt(raw.historyLimit, 10, 5000, DEFAULTS.historyLimit);
-    s.dedupeWindowSec = clampInt(raw.dedupeWindowSec, 1, 3600, DEFAULTS.dedupeWindowSec);
-    s.dedupeRepeats = clampInt(raw.dedupeRepeats, 1, 100, DEFAULTS.dedupeRepeats);
-    if (typeof raw.monocolorValue === 'string' && HEX6.test(raw.monocolorValue)) {
-      s.monocolorValue = raw.monocolorValue.toLowerCase();
+    for (const [key, [min, max]] of Object.entries(NUMBER_RANGES)) {
+      s[key] = clampInt(raw[key], min, max, DEFAULTS[key]);
     }
-    if (typeof raw.bgColor === 'string' && HEX6.test(raw.bgColor)) {
-      s.bgColor = raw.bgColor.toLowerCase();
+    if (isFontKey(raw.fontFamily)) s.fontFamily = raw.fontFamily;
+    // Only a string replaces the default, so a viewer with nothing stored
+    // gets what defaults.json says rather than an empty string.
+    for (const [key, { clean }] of Object.entries(TEXT_KEYS)) {
+      if (typeof raw[key] === 'string') s[key] = clean(raw[key]);
     }
-    s.deletedMessages = oneOf(raw.deletedMessages, DELETED_MODES, DEFAULTS.deletedMessages);
-    s.dedupeMode = oneOf(raw.dedupeMode, DEDUPE_MODES, DEFAULTS.dedupeMode);
+    for (const [key, allowed] of Object.entries(CHOICE_KEYS)) {
+      s[key] = oneOf(raw[key], allowed, DEFAULTS[key]);
+    }
+    for (const key of COLOR_KEYS) {
+      if (typeof raw[key] === 'string' && HEX6.test(raw[key])) s[key] = raw[key].toLowerCase();
+    }
     s.stats = oneOf(raw.stats, STATS_CHOICES, DEFAULTS.stats);
-    s.overlayFadeSec = clampInt(raw.overlayFadeSec, 0, 600, DEFAULTS.overlayFadeSec);
     return s;
+  }
+
+  // Everything wrong with a defaults.json, as sentences naming the setting;
+  // empty when it is fine. Strict where a viewer's settings are quietly
+  // repaired, because the only person who reads these is whoever just edited
+  // the file, and a silent repair would hide the mistake from exactly them.
+  function defaultsProblems(json) {
+    if (!json || typeof json !== 'object' || Array.isArray(json)) {
+      return ['it must hold a single JSON object, { ... }'];
+    }
+    const problems = [];
+    if ('stats' in json) {
+      problems.push('"stats" cannot have a default: every viewer is asked first');
+    }
+    for (const key of Object.keys(json)) {
+      if (key !== 'stats' && !SETTING_KEYS.includes(key)) problems.push(`"${key}" is not a setting`);
+    }
+    const check = (key, ok, what) => {
+      if (!(key in json)) problems.push(`"${key}" is missing`);
+      else if (!ok(json[key])) problems.push(`"${key}" must be ${what}`);
+    };
+    for (const key of BOOLEAN_KEYS) check(key, (v) => typeof v === 'boolean', 'true or false');
+    for (const [key, [min, max]] of Object.entries(NUMBER_RANGES)) {
+      check(key, (v) => Number.isInteger(v) && v >= min && v <= max, `a whole number from ${min} to ${max}`);
+    }
+    for (const [key, allowed] of Object.entries(CHOICE_KEYS)) {
+      check(key, (v) => allowed.includes(v), `one of ${allowed.map((a) => `"${a}"`).join(', ')}`);
+    }
+    for (const key of COLOR_KEYS) {
+      check(key, (v) => typeof v === 'string' && HEX6.test(v), 'a colour written like "#0b0e0f"');
+    }
+    for (const [key, { clean, what }] of Object.entries(TEXT_KEYS)) {
+      check(key, (v) => typeof v === 'string' && clean(v) === v, what);
+    }
+    check(
+      'fontFamily',
+      isFontKey,
+      `"custom" or one of ${Object.keys(FONT_STACKS).map((k) => `"${k}"`).join(', ')}`
+    );
+    check(
+      'hiddenBadges',
+      (v) => Array.isArray(v) && v.every((kind) => BADGE_KINDS.includes(kind)),
+      `a list of badge kinds from: ${BADGE_KINDS.join(', ')}`
+    );
+    check(
+      'badgeOrder',
+      (v) =>
+        Array.isArray(v) &&
+        v.length === BADGE_KINDS.length &&
+        new Set(v).size === v.length &&
+        v.every((kind) => BADGE_KINDS.includes(kind)),
+      `every badge kind exactly once: ${BADGE_KINDS.join(', ')}`
+    );
+    return problems;
+  }
+
+  // Makes a defaults.json the defaults, or throws saying what is wrong with
+  // it - in which case the defaults already in place stay.
+  function useDefaults(json) {
+    const problems = defaultsProblems(json);
+    if (problems.length) {
+      const which = problems.length === 1 ? 'a problem' : `${problems.length} problems`;
+      const err = new Error(`defaults.json has ${which}: ${problems.join('; ')}`);
+      err.problems = problems;
+      throw err;
+    }
+    const next = {};
+    for (const key of Object.keys(json)) {
+      next[key] = Array.isArray(json[key]) ? Object.freeze([...json[key]]) : json[key];
+    }
+    next.stats = CONSENT_DEFAULT;
+    DEFAULTS = Object.freeze(next);
+    return DEFAULTS;
   }
 
   // Consent is not something a link can grant on someone else's behalf, so it
@@ -241,7 +353,7 @@
     }
     return FONT_STACKS[settings.fontFamily] || FONT_STACKS.system;
   }
-  return {
+  const api = {
     SETTINGS_KEY,
     LEGACY_SETTINGS_KEY,
     PINNED_HISTORY,
@@ -250,10 +362,9 @@
     BADGE_KINDS,
     BADGE_LABELS,
     DELETED_MODES,
-    DEDUPE_MODES,
     STATS_CHOICES,
     TIMESTAMP_FORMATS,
-    DEFAULTS,
+    SETTING_KEYS,
     NOT_SHAREABLE,
     HEX6,
     cleanFontName,
@@ -264,5 +375,11 @@
     settingsFromQuery,
     settingsAsParams,
     fontFamilyCss,
+    defaultsProblems,
+    useDefaults,
   };
+  // A getter, not a copy: DEFAULTS only exists once defaults.json is loaded,
+  // and whoever reads it after `ready` has to see the loaded object.
+  Object.defineProperty(api, 'DEFAULTS', { enumerable: true, get: () => DEFAULTS });
+  return api;
 });

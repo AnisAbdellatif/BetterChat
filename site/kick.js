@@ -485,6 +485,40 @@
     }
   }
 
+  // ---------------------------------------------------------------------
+  // Message text
+  // ---------------------------------------------------------------------
+
+  // Kick's message text embeds emotes as "[emote:<id>:<name>]" rather than
+  // sending markup; kick.com's own frontend parses the placeholders, so this
+  // page has to as well. Splits content into text and emote pieces for app.js
+  // to draw.
+  //
+  // With `combine`, a run of the same emote - back to back, or with nothing
+  // but whitespace between - becomes one piece with a count, so
+  // "KEKW KEKW KEKW" is drawn once, with x3. The same emote means the same
+  // id; the name is whatever the first of the run said.
+  const EMOTE_TOKEN = /\[emote:(\d+):([^\]]*)\]/g;
+
+  function parseContent(content, { combine = false } = {}) {
+    const text = typeof content === 'string' ? content : '';
+    const parts = [];
+    let last = 0;
+    for (const m of text.matchAll(EMOTE_TOKEN)) {
+      const between = text.slice(last, m.index);
+      const prev = parts[parts.length - 1];
+      if (combine && prev && prev.type === 'emote' && prev.id === m[1] && !between.trim()) {
+        prev.count += 1;
+      } else {
+        if (between) parts.push({ type: 'text', text: between });
+        parts.push({ type: 'emote', id: m[1], name: m[2], count: 1 });
+      }
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) parts.push({ type: 'text', text: text.slice(last) });
+    return parts;
+  }
+
   return {
     EVENTS: EV,
     KickApi,
@@ -495,5 +529,6 @@
     buildPin,
     parseBadges,
     parseBadgesV2,
+    parseContent,
   };
 });
