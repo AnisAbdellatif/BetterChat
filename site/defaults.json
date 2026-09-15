@@ -33,7 +33,6 @@
   "dedupe": true,
   "dedupeWindowSec": 6,
   "dedupeRepeats": 1,
-  "dedupeMode": "count",
   "collapseEmotes": true,
   "deletedMessages": "gray",
   "showModeration": true,
