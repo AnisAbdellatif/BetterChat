@@ -149,11 +149,15 @@ BetterChatSettings.ready.then(function () {
         row.classList.toggle('mentions-me', mentionsMe(row.dataset.text));
       }
 
-      // Rows drawn before the handshake landed have no buttons yet.
+      // Rows drawn before the handshake landed have no buttons yet. Pinning
+      // is not backfilled: it needs the whole message, and a row drawn before
+      // the controls were on was not kept with one. Those rows can still be
+      // deleted and replied to, and the next message can be pinned.
       if (withReply && canReplyTo(row) && !row.querySelector('.msg-reply')) {
         row.appendChild(replyButton());
       }
       if (withTools && row.dataset.id && !row.querySelector('.mod-delete')) {
+        if (pinnable.has(row)) row.appendChild(pinButton());
         row.appendChild(deleteButton());
       }
     }
@@ -1464,7 +1468,14 @@ BetterChatSettings.ready.then(function () {
     // Only where they can actually work, so ordinary viewers carry no extra
     // nodes per message. CSS reveals them on hover.
     if (replyAvailable && canReplyTo(row)) row.appendChild(replyButton());
-    if (modEnabled()) row.appendChild(deleteButton());
+    if (modEnabled()) {
+      // Pinning hands Kick the message back whole, so what Kick sent has to
+      // be kept, not just the few fields the row carries. Only while the
+      // controls are on, and only for as long as the row lives.
+      if (msg.raw) rememberForPin(row, msg.raw);
+      row.appendChild(pinButton());
+      row.appendChild(deleteButton());
+    }
 
     // This row now stands for the key, so a later repeat counts onto it.
     // Registered even with counting off, so turning it on mid-stream works on
@@ -1965,6 +1976,56 @@ BetterChatSettings.ready.then(function () {
     btn.setAttribute('aria-label', 'Delete this message');
     return btn;
   }
+
+  // ---------------------------------------------------------------------
+  // Pinning
+  //
+  // Kick's pin call takes the whole message back - sender, badges and all -
+  // and hands that to every viewer as the banner. So what is sent has to be
+  // the message as Kick gave it, not the few fields a row carries: a message
+  // pinned with its badges thinned out would show everyone the thin version.
+  //
+  // The messages are held against their rows in a WeakMap, so trimming the
+  // list is what frees them; nothing here has to be pruned.
+  // ---------------------------------------------------------------------
+
+  const pinnable = new WeakMap(); // row -> the message Kick sent
+
+  function rememberForPin(row, msg) {
+    pinnable.set(row, msg);
+  }
+
+  // Kick's own default, in minutes (20 hours). Its menu offers others; one
+  // button matching the default is what a moderator gets by clicking pin.
+  const PIN_DURATION_MIN = 1200;
+
+  const PIN_PATH =
+    'M10 2.5a.83.83 0 0 0-.83.83v5h-2.5a.83.83 0 0 0 0 1.67h2.5v6.67a.83.83 0 0 0 1.66 0V10h2.5a.83.83 0 0 0 0-1.67h-2.5v-5A.83.83 0 0 0 10 2.5';
+
+  function pinButton() {
+    const btn = el('button', 'mod-pin');
+    btn.type = 'button';
+    btn.title = 'Pin this message';
+    btn.setAttribute('aria-label', 'Pin this message');
+    btn.appendChild(icon([PIN_PATH]));
+    return btn;
+  }
+
+  messagesEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.mod-pin');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const row = btn.closest('.msg');
+    const raw = row && pinnable.get(row);
+    if (!raw) return;
+    btn.disabled = true;
+    moderate({ action: 'pin', message: raw, duration: PIN_DURATION_MIN }, 'pin that message').then(
+      (ok) => {
+        if (!ok) btn.disabled = false;
+      }
+    );
+  });
 
   // ---------------------------------------------------------------------
   // Replying (only inside the KickPlus extension)

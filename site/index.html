@@ -248,6 +248,29 @@
   .mod-delete:hover { color: #ff6b6b; }
   .mod-delete:disabled { opacity: 0.4; cursor: default; }
 
+  .mod-pin {
+    position: absolute;
+    top: 2px;
+    right: 28px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.6);
+    color: #adadb8;
+    line-height: 1;
+    cursor: pointer;
+  }
+  /* Upright it reads as a plus; Kick's own is tilted. */
+  .mod-pin svg { width: 19px; height: 19px; transform: rotate(45deg); }
+  body.can-moderate .msg:hover .mod-pin { display: flex; }
+  .mod-pin:hover { color: #53fc18; }
+  .mod-pin:disabled { opacity: 0.4; cursor: default; }
+
   /* Replying. Also extension-only, but a separate permission: anyone signed
      in can reply, where moderating needs the badge for it. So it has a body
      class of its own, and either button can appear without the other. */
@@ -272,9 +295,10 @@
   /* Bigger than the icon looks like it should be: the delete button beside it
      is a 19px glyph, and a 15px arrow next to it read as an afterthought. */
   .msg-reply svg { width: 19px; height: 19px; }
-  /* Beside the delete button where both are drawn, in its place where it is
-     not, so a viewer who cannot moderate gets no gap. */
-  body.can-moderate .msg-reply { right: 28px; }
+  /* The three stack from the right: delete, pin, reply. Each only claims its
+     slot when the ones to its right are actually drawn, so a viewer who can
+     reply but not moderate gets no gap where the others would have been. */
+  body.can-moderate .msg-reply { right: 54px; }
   body.can-reply .msg:hover .msg-reply { display: flex; }
   .msg-reply:hover { color: #53fc18; }
 

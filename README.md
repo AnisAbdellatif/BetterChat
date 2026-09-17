@@ -72,7 +72,10 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
   betterchat.tech or in an overlay nothing answers the handshake and no
   controls appear. Nothing is announced on success: Kick broadcasts the ban
   or deletion and the chat already draws it. A refusal from Kick is shown as
-  a line, and a 403 hides the controls for the rest of the session.
+  a line, and a 403 hides the controls for the rest of the session. Hovering
+  also gives **pin**, which pins for Kick's own default of 20 hours; the
+  banner it produces is the one this page already draws for everyone, since
+  Kick broadcasts the pin like any other event.
 - **Replying, inside the KickPlus extension only.** Hovering a message also
   gives a reply button, and a bar along the bottom then says what the next
   message will reply to, with Escape or its own button to cancel. This page
@@ -283,7 +286,7 @@ Requests from this page, each answered with the same `id`:
 | Type | Answer |
 | ---- | ------ |
 | `hello` | `available` (a signed-in Kick tab, so moderating is possible), `canReply` (the page has a message box to type in), and any reply already armed |
-| `action` | a moderation action - `delete`, `timeout`, `ban`, `unban` - answered `ok` or with an `error` and Kick's `status` |
+| `action` | a moderation action - `delete`, `timeout`, `ban`, `unban`, `pin` - answered `ok` or with an `error` and Kick's `status` |
 | `reply` + `message: { id, content, sender: { id, username } }` | arms a reply: the next message typed into Kick's box is sent as a reply to this one |
 | `reply-cancel` | disarms it |
 

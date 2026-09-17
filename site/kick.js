@@ -101,6 +101,12 @@
       // where Kick did not send one, which is what stops a reply being armed
       // on a message it could not be sent for.
       sender_id: integer(sender.id),
+      // Pinning hands the message back to Kick whole - sender, badges, the
+      // lot - and Kick gives that to every viewer as the banner, so what is
+      // sent has to be what Kick sent us rather than these fields put back
+      // together. A reference to the object that is already here, not a copy,
+      // and only reachable for as long as the message is.
+      raw: data,
       content: data.content,
       created_at: str(data.created_at),
       color: str(identity.color),
