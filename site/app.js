@@ -1980,11 +1980,37 @@ BetterChatSettings.ready.then(function () {
   // across and sends the reply itself.
   // ---------------------------------------------------------------------
 
+  // Kick's own icons, so the bar reads as the same control its chat has. Both
+  // are drawn rather than fetched: two paths weigh less than a request, and
+  // they inherit the colour of whatever they sit in.
+  const REPLY_ARROW_PATH =
+    'M13.33 7.5H4.51l1.07-1.07a.83.83 0 1 0-1.17-1.18l-2.5 2.5a.83.83 0 0 0 0 1.18l2.5 2.5q.26.24.59.24t.6-.24a.83.83 0 0 0 0-1.18L4.51 9.18h8.82a2.5 2.5 0 0 1 2.5 2.5V15a.84.84 0 0 0 1.67 0v-3.33c0-2.3-1.87-4.17-4.17-4.17';
+  const CROSS_PATHS = [
+    'M15.83 16.67a1 1 0 0 1-.59-.25L3.58 4.77a.83.83 0 1 1 1.17-1.18l11.67 11.67a.83.83 0 0 1-.6 1.42z',
+    'M4.17 16.67a.83.83 0 0 1-.6-1.42L15.25 3.58a.83.83 0 1 1 1.18 1.18L4.75 16.43a.8.8 0 0 1-.6.24z',
+  ];
+
+  function icon(paths, className) {
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 20 20');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('aria-hidden', 'true');
+    if (className) svg.setAttribute('class', className);
+    for (const d of paths) {
+      const path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('fill', 'currentColor');
+      path.setAttribute('d', d);
+      svg.appendChild(path);
+    }
+    return svg;
+  }
+
   function replyButton() {
-    const btn = el('button', 'msg-reply', '↩');
+    const btn = el('button', 'msg-reply');
     btn.type = 'button';
     btn.title = 'Reply to this message';
     btn.setAttribute('aria-label', 'Reply to this message');
+    btn.appendChild(icon([REPLY_ARROW_PATH]));
     return btn;
   }
 
@@ -2038,6 +2064,10 @@ BetterChatSettings.ready.then(function () {
   // Drawn from what the extension says is armed, never from the click, so it
   // cannot claim a reply the extension has already dropped - on a channel
   // switch, or once the message has gone out.
+  //
+  // It shows the message itself rather than a line of grey text: the same
+  // name colour, badges and emotes it has in the chat above, so what is being
+  // replied to is recognised at a glance instead of read.
   function showReplyArmed(state) {
     const armed = !!(state && state.armed);
     // Disarming what is already off changes nothing, and the extension says
@@ -2054,17 +2084,56 @@ BetterChatSettings.ready.then(function () {
         replyBarEl.replaceChildren();
         return;
       }
-      const who = el('span', 'user', `@${state.username || '?'}`);
-      const text = el('span', 'rb-text', state.content || '');
-      const cancel = el('button', 'rb-cancel', '×');
+
+      const name = state.username || '?';
+      const head = el('div', 'rb-head');
+      head.append(icon([REPLY_ARROW_PATH], 'rb-icon'), el('span', 'rb-title', `Replying to ${name}:`));
+
+      const cancel = el('button', 'rb-cancel');
       cancel.type = 'button';
       cancel.title = 'Cancel this reply (Escape)';
       cancel.setAttribute('aria-label', 'Cancel this reply');
+      cancel.appendChild(icon(CROSS_PATHS));
       cancel.addEventListener('click', cancelReply);
 
-      replyBarEl.replaceChildren(el('span', 'arrow', '↩'), 'Replying to ', who, ': ', text, cancel);
+      const body = el('div', 'rb-body');
+      body.append(head, replyPreview(state));
+      replyBarEl.replaceChildren(body, cancel);
       replyBarEl.hidden = false;
     });
+  }
+
+  // The armed message, drawn the way the chat draws it. The row this came
+  // from may already have been trimmed out of history, so it is rebuilt from
+  // what the extension reported rather than looked up.
+  function replyPreview(state) {
+    const preview = el('div', 'rb-msg');
+
+    const row = messagesEl.querySelector(`.msg[data-id="${cssEscape(state.messageId || '')}"]`);
+    // The badges and the name colour are only on the row. Without it - trimmed
+    // away, or armed before this tab opened - the name still carries, in the
+    // colour every other message from them has.
+    if (row) {
+      const badges = row.querySelector('.badges');
+      if (badges) preview.appendChild(badges.cloneNode(true));
+    }
+
+    const user = el('span', 'user', state.username || '?');
+    const known = row && row.querySelector(':scope > .user');
+    user.style.color = known ? known.style.color : usernameColor(null);
+    preview.append(user, el('span', 'sep', ': '));
+
+    const body = el('span', 'content');
+    appendMessageContent(body, state.content || '');
+    preview.appendChild(body);
+    return preview;
+  }
+
+  // Message ids are uuids, so this only ever guards against a malformed one
+  // reaching a selector.
+  function cssEscape(value) {
+    if (window.CSS && CSS.escape) return CSS.escape(value);
+    return String(value).replace(/[^\w-]/g, '');
   }
 
   // Kick refused the send. The message is no longer in Kick's box - it was

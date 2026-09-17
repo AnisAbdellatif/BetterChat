@@ -266,18 +266,20 @@
     border-radius: 5px;
     background: rgba(0, 0, 0, 0.6);
     color: #adadb8;
-    font-size: 14px;
     line-height: 1;
     cursor: pointer;
   }
+  .msg-reply svg { width: 15px; height: 15px; }
   /* Beside the delete button where both are drawn, in its place where it is
      not, so a viewer who cannot moderate gets no gap. */
   body.can-moderate .msg-reply { right: 28px; }
   body.can-reply .msg:hover .msg-reply { display: flex; }
   .msg-reply:hover { color: #53fc18; }
 
-  /* The bar saying what the next message will reply to. At the bottom: it
-     belongs with Kick's message box, which is just below this frame. */
+  /* What the next message will reply to. At the bottom: it belongs with
+     Kick's message box, which is just below this frame. It shows the message
+     itself - name colour, badges, emotes - rather than a line of grey text,
+     so it is recognised at a glance instead of read. */
   #replyBar {
     position: fixed;
     bottom: 0;
@@ -286,48 +288,72 @@
     z-index: 6;
     box-sizing: border-box;
     display: flex;
-    align-items: baseline;
-    gap: 6px;
-    padding: 5px 8px 6px 10px;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 7px 4px 8px 10px;
     background: #1b2126;
     border-top: 1px solid #2f3a41;
-    border-left: 3px solid #53fc18;
-    font-size: var(--chat-font-size);
-    font-family: var(--chat-font-family);
-    line-height: 1.4;
     box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.4);
   }
   #replyBar[hidden] { display: none; }
-  #replyBar .arrow { flex: 0 0 auto; color: #53fc18; }
-  #replyBar .user { font-weight: 700; }
-  /* The original can be any length; one line of it is enough to know which
-     message it was. */
-  #replyBar .rb-text {
+  #replyBar .rb-body {
     flex: 1 1 auto;
     min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    color: #adadb8;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
+  #replyBar .rb-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #efeff1;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  #replyBar .rb-icon { width: 16px; height: 16px; flex: 0 0 auto; color: #adadb8; }
+  /* The quoted message, in the chat's own font and size: it is a message, and
+     the settings that govern messages should govern it. */
+  #replyBar .rb-msg {
+    min-width: 0;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: #22282d;
+    border-left: 3px solid #53fc18;
+    font-size: var(--chat-font-size);
+    font-family: var(--chat-font-family);
+    line-height: 1.5;
+    /* Two lines of it is enough to know which message it was; a wall of text
+       must not push the chat up. */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+  }
+  #replyBar .rb-msg .user { font-weight: 700; }
+  #replyBar .rb-msg .badge { vertical-align: text-bottom; }
   #replyBar .rb-cancel {
     flex: 0 0 auto;
-    align-self: center;
-    width: 22px;
-    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
     padding: 0;
     border: none;
-    border-radius: 5px;
+    border-radius: 6px;
     background: transparent;
     color: #adadb8;
-    font-size: 18px;
-    line-height: 1;
     cursor: pointer;
   }
-  #replyBar .rb-cancel:hover { color: #ff6b6b; }
-  /* The bar covers the foot of the list, so the last message clears it. */
-  body.replying #messages { padding-bottom: 40px; }
-  body.replying #jumpLatest { bottom: 44px; }
+  #replyBar .rb-cancel svg { width: 15px; height: 15px; }
+  #replyBar .rb-cancel:hover { background: #2a3238; color: #efeff1; }
+  /* The bar covers the foot of the list, so the last message clears it. It is
+     two lines plus the heading now, so more room than the old single line. */
+  body.replying #messages { padding-bottom: 76px; }
+  body.replying #jumpLatest { bottom: 80px; }
 
   .uc-mod {
     display: flex;
