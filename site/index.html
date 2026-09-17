@@ -517,6 +517,27 @@
     padding: 0 2px;
   }
   #closePin:hover { color: #efeff1; }
+  /* Unpin takes the banner off everyone's chat, where the button beside it
+     only hides it here, so it follows the moderation controls rather than the
+     handshake: switching those off takes this with them. */
+  #unpinMsg {
+    flex: 0 0 auto;
+    align-self: center;
+    display: none;
+    background: none;
+    border: 1px solid #2f3a41;
+    border-radius: 5px;
+    color: #adadb8;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1;
+    padding: 4px 7px;
+    margin-right: 2px;
+  }
+  body.can-moderate #unpinMsg { display: block; }
+  #unpinMsg:hover { color: #ff6b6b; border-color: #ff6b6b; }
+  #unpinMsg:disabled { opacity: 0.4; cursor: default; }
 
   /* First-visit consent for the anonymous viewer count. Nothing is sent
      until this is answered, so it is deliberately in the way. */
@@ -939,6 +960,10 @@
   <div id="pinned" hidden>
     <span class="pin-icon">📌</span>
     <div class="pin-body"><span class="pin-label">Pinned</span><span id="pinContent"></span></div>
+    <!-- Unpin is for everyone in the channel; hide is for this tab alone. The
+         one that changes what others see is the one that has to be told
+         apart, hence the word rather than another glyph. -->
+    <button id="unpinMsg" type="button" title="Unpin for everyone" aria-label="Unpin for everyone">Unpin</button>
     <button id="closePin" type="button" title="Hide pinned message" aria-label="Hide pinned message">&minus;</button>
   </div>
 

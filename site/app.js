@@ -2293,6 +2293,7 @@ BetterChatSettings.ready.then(function () {
   // they have not seen.
   let pinHidden = false;
   let pinTimer = null;
+  const unpinBtn = document.getElementById('unpinMsg');
 
   function showPin(ev) {
     const msg = ev.message || {};
@@ -2310,6 +2311,8 @@ BetterChatSettings.ready.then(function () {
     // Each new pin starts in the state the viewer asked for: open, or
     // collapsed to the pin button under the gear.
     pinHidden = settings.collapsePinned;
+    // A new pin is a new thing to unpin, whatever became of the last one.
+    unpinBtn.disabled = false;
     clearTimeout(pinTimer);
     // Expiry is an absolute timestamp from the server (Kick's pins default
     // to 20 hours). Cap the timer: browsers clamp very long timeouts.
@@ -2337,6 +2340,16 @@ BetterChatSettings.ready.then(function () {
   document.getElementById('closePin').addEventListener('click', () => {
     pinHidden = true;
     applyPinVisibility();
+  });
+
+  // Unpinning takes the banner off the channel, not just this tab. Nothing is
+  // cleared here on success: Kick broadcasts the removal and clearPin runs
+  // from that, the same as it would for a pin someone else took down.
+  unpinBtn.addEventListener('click', () => {
+    unpinBtn.disabled = true;
+    moderate({ action: 'unpin' }, 'unpin that message').then((ok) => {
+      if (!ok) unpinBtn.disabled = false;
+    });
   });
 
   showPinBtn.addEventListener('click', () => {
