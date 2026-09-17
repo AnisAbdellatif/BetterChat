@@ -24,10 +24,10 @@ lives in `site/kick.js`.
 ## Layout
 
 ```
-site/          the chat page: index.html, app.js, kick.js, config.js, sw.js,
-               privacy.html
+site/          the chat page: index.html, app.js, settings.js, defaults.json, kick.js,
+               config.js, sw.js, privacy.html
 betterchat/    the server: main.py (routes), stats.py (heartbeats -> stats), admin.html
-tests/         pytest (server) + node --test (kick.js)
+tests/         pytest (server) + node --test (kick.js, settings.js)
 pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
 ```
 
@@ -63,7 +63,7 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
   the user a reply is aimed at, the pinned message's author, and the names in
   moderation and event lines (both the user banned and the moderator who
   banned them).
-- **Moderating, inside the extension only.** Hovering a message gives a
+- **Moderating, inside the KickPlus extension only.** Hovering a message gives a
   delete button, and a user card gains timeout (1m / 5m / 15m / 1h / 1d) and
   ban, or unban for anyone currently banned or timed out. This page has no
   Kick session of its own and never will - that
@@ -72,23 +72,47 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
   betterchat.tech or in an overlay nothing answers the handshake and no
   controls appear. Nothing is announced on success: Kick broadcasts the ban
   or deletion and the chat already draws it. A refusal from Kick is shown as
-  a line, and a 403 hides the controls for the rest of the session.
+  a line, and a 403 hides the controls for the rest of the session. Hovering
+  also gives **pin**, which pins for Kick's own default of 20 hours, and the
+  banner then carries **Unpin** beside its hide button - unpinning takes it
+  off the channel where hiding only takes it off this tab, which is why one
+  says a word and the other is a glyph. Neither draws anything itself: Kick
+  broadcasts both, and this page has always drawn those events.
+- **Replying, inside the KickPlus extension only.** Hovering a message also
+  gives a reply button, and a bar along the bottom then says what the next
+  message will reply to, with Escape or its own button to cancel. This page
+  has no message box: Kick's is still there below the frame, and that is what
+  the viewer types in. So the button only says *which* message, and the
+  extension makes the next message typed into Kick's box a reply to it.
+  It is a separate permission from moderating - anyone signed in can reply -
+  so the two buttons appear independently of each other. The bar is drawn from
+  what the extension reports rather than from the click, so it cannot claim a
+  reply that has already gone out or been dropped on a channel switch. If Kick
+  refuses the send, the text comes back with the reason and is shown as a
+  line, since Kick's box has already been cleared by then.
 - Status pill when the connection to Kick is down or reconnecting, when the
   chat subscription is pending, or when the channel is offline (live /
   offline changes arrive in real time).
+- A clear button under the gear empties the chat in this tab. It is local
+  only - nothing is sent to Kick and nobody else's chat changes - which is why
+  it is an eraser rather than a bin, next to per-message delete buttons that
+  do act on Kick.
 
 **Per-viewer settings** (gear button, saved in `localStorage`, tabbed)
 
 - Appearance: font size and family (presets or any installed font),
-  background color, message spacing, one color for all usernames, timestamps,
-  scroll-back through history with a history size, user cards on/off.
+  background color, message spacing, one color for all usernames.
+- Behavior: timestamps and their format, scroll-back through history with a
+  history size, user cards on/off. Scrolling up holds chat still - nothing
+  moves under what you are reading - and a pill shows how many messages have
+  arrived below, with a click back down to them.
 - Badges: choose which badge kinds are shown, and drag them (or use each
   row's arrows) into the order they are drawn in next to usernames. Badges of
   the same kind keep Kick's own order within it.
-- Filters: act on messages a user repeats within a timespan (per user) -
-  either hide the repeat, or count it onto the copy already on screen as
-  `×2`, `×3` - collapse an emote spammed back-to-back in one message,
-  highlight messages that @mention you.
+- Filters: count a message a user repeats within a timespan (per user) onto
+  the copy already on screen as `×2`, `×3`; draw an emote spammed
+  back-to-back once, with a combo count beside it (`×12`); highlight messages
+  that @mention you.
 - Events: what to do with deleted messages, which moderation / pin / sub /
   gift / host events to show, whether a pinned message starts collapsed, and
   a switch for the moderation controls (shown only where they work).
@@ -96,6 +120,8 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
   settings link, export / import settings as JSON, reset, and the switch for
   the anonymous viewer count (the same answer the first-visit banner asks
   for).
+- About: which build this tab is running, and whether the server has a newer
+  one. Nothing here is a setting - it is what makes a bug report nameable.
 
 **Settings in the URL.** Any setting can be a query parameter
 (`/xqc?fontSize=16&monocolor=1&hiddenBadges=level,event`). URL settings
@@ -128,10 +154,22 @@ per-channel table. HTTP Basic Auth; a 404 until credentials are set.
     ping/pong keepalive from Kick's `activity_timeout` and reconnect with
     exponential backoff.
   - `normalizeMessage` / `normalizeEvent`: Kick's raw payloads into the
-    shapes `app.js` renders.
-- `site/app.js` - rendering, filters, settings, user cards and overlay
-  mode. `site/config.js` - Kick's public Pusher app key
-  and cluster (the same values kick.com ships to every browser).
+    shapes `app.js` renders. `normalizeMessage` keeps `sender_id` because a
+    reply has to name the parent's sender to Kick, and this is the only place
+    it comes past.
+- `site/settings.js` - the settings model, and the only part of the frontend
+  with no DOM in it: which settings exist, what each may hold (`sanitize`),
+  and how they survive a round trip through the URL. Split out so it can be
+  tested on its own, and loaded the same way as `kick.js`.
+- `site/defaults.json` - the starting value of every setting. **Change
+  defaults here**, not in code. It is checked against `settings.js` when the
+  page loads: a missing setting, a misspelt name, a number out of range or an
+  unknown option stops the page with a message naming the setting, and
+  `npm test` catches the same mistakes before a push. The one thing it cannot
+  set is the viewer-count answer: every viewer is asked first.
+- `site/app.js` - rendering, filters, user cards, moderation and overlay mode:
+  everything that touches the DOM. `site/config.js` - Kick's public Pusher app
+  key and cluster (the same values kick.com ships to every browser).
 - `betterchat/main.py` - serves `site/` (every unknown path is the chat
   page, real files as-is), takes heartbeats, serves the board, and answers
   `/privacy` with `site/privacy.html`. That route is registered before the
@@ -162,25 +200,25 @@ it has loaded.
 Navigations are network-first, so a deploy is picked up straight away and
 the cached shell is only used when the origin can't be reached. Scripts are
 stale-while-revalidate: instant from cache, refreshed in the background, so
-a viewer is one load behind at worst. **Bump the version in `site/sw.js` when
-you change a file the worker caches** - the shell, `app.js`, `kick.js`,
-`config.js` - since with no build step and no hashed filenames that constant
-is the only thing that retires an old cache.
+a viewer is one load behind at worst.
 
-The version is two numbers, `v<MAJOR>.<MINOR>`:
+There is no version to bump. The server writes a hash of every file under
+`site/` into `sw.js` as it serves it, and the worker names its cache after
+that hash: change any file and the worker's bytes change, the browser
+installs the new worker, and its `activate` drops the old cache. The hash is
+only recomputed when a file's size or modification time moves, so in the
+image it is worked out once. On install the worker fetches its files past the
+HTTP cache (`cache: 'reload'`), so a build's cache holds that build's files.
+Served from a plain static host instead, the placeholder stays as written and
+the worker simply never retires its cache on its own.
 
-- **`MINOR` is the everyday bump.** Edited `app.js`? Bump `MINOR`, nothing
-  else. This is what almost every deploy does.
-- **`MAJOR` is for caching itself changing** - a different set of cached
-  assets, a different strategy, or a shell that an old cached copy could not
-  work with. Bump it and reset `MINOR` to `0`.
-
-The browser only cares that the string differs from the last one, since
-`activate` drops every cache that is not the current one; the split is there
-to keep the routine bump small and to make a real change to the caching
-behaviour stand out in a diff. Editing `sw.js` itself needs no bump:
-browsers compare the worker byte for byte and install a changed one on their
-own.
+That hash is the only thing identifying a build, so the settings panel's
+**About** tab shows it: the one this tab is running, read from the cache the
+worker filled, and `/api/build` for what the server is serving now. When they
+differ the tab is a deploy behind and says so, which is the difference between
+a bug report naming a build and one that cannot. `/api/build` is under `/api/`
+so the worker never caches it - cached, it would report the build it was
+cached under for good.
 
 `/privacy` is deliberately left to the network. Navigations are cached under
 one fixed shell key, so caching the policy would overwrite the chat page an
@@ -201,7 +239,7 @@ Tests:
 
 ```bash
 uv run pytest        # server: heartbeats, auth, site serving, persistence
-npm test             # kick.js: normalizers, API client (fake fetch), relay framing (Node)
+npm test             # kick.js normalizers / API client / relay framing, and settings.js (Node)
 ```
 
 | Variable | Purpose |
@@ -235,6 +273,37 @@ Two things the embedding side owns:
 
 Per-viewer settings are stored per-origin, so an embed keeps its own
 `localStorage` and does not inherit settings from a direct visit.
+
+### The bridge to the extension
+
+Moderating and replying both need a Kick session, which this page does not
+have and will not get. They go over `postMessage` to the framing page
+instead, which on kick.com is the extension's content script. Every message
+carries `channel: 'bck-mod'` and an `id`, and both sides check the other's
+origin: this page will only talk to `https://kick.com`, and the extension
+only to the BetterChat origin it loaded.
+
+Requests from this page, each answered with the same `id`:
+
+| Type | Answer |
+| ---- | ------ |
+| `hello` | `available` (a signed-in Kick tab, so moderating is possible), `canReply` (the page has a message box to type in), and any reply already armed |
+| `action` | a moderation action - `delete`, `timeout`, `ban`, `unban`, `pin`, `unpin` - answered `ok` or with an `error` and Kick's `status` |
+| `reply` + `message: { id, content, sender: { id, username } }` | arms a reply: the next message typed into Kick's box is sent as a reply to this one |
+| `reply-cancel` | disarms it |
+
+The extension also speaks unasked, with its type as the `id`, since these can
+arrive long after any request:
+
+| Type | Meaning |
+| ---- | ------- |
+| `reply-state` | what is armed now, or nothing; the bottom bar is drawn from this alone |
+| `reply-failed` | Kick refused the send, with the reason and the text back, Kick's box having been cleared already |
+
+A request with no answer times out after ten seconds and is treated as a
+refusal, so an older extension that does not know a message type leaves the
+feature off rather than hanging. `canReply` is what keeps the reply button
+away from an extension too old to send one.
 
 ## Publishing (homelab + Cloudflare Tunnel)
 

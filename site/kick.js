@@ -75,9 +75,14 @@
   function parseReply(metadata) {
     const original = metadata && metadata.original_message;
     if (!original || typeof original !== 'object') return null;
+    const sender = metadata.original_sender || {};
     return {
       id: original.id != null ? String(original.id) : null,
-      username: (metadata.original_sender && str(metadata.original_sender.username)) || null,
+      username: str(sender.username),
+      // Kept for the same reason as sender_id below: replying to a message
+      // needs the parent's sender id, and a reply line is a message someone
+      // may well want to reply to in turn.
+      sender_id: integer(sender.id),
       content: str(original.content),
     };
   }
@@ -91,6 +96,17 @@
     return {
       id: String(data.id),
       username: sender.username,
+      // Replying needs it: Kick's send call carries the parent's sender id as
+      // well as their name, and this is the only place it comes past. Null
+      // where Kick did not send one, which is what stops a reply being armed
+      // on a message it could not be sent for.
+      sender_id: integer(sender.id),
+      // Pinning hands the message back to Kick whole - sender, badges, the
+      // lot - and Kick gives that to every viewer as the banner, so what is
+      // sent has to be what Kick sent us rather than these fields put back
+      // together. A reference to the object that is already here, not a copy,
+      // and only reachable for as long as the message is.
+      raw: data,
       content: data.content,
       created_at: str(data.created_at),
       color: str(identity.color),
@@ -485,6 +501,40 @@
     }
   }
 
+  // ---------------------------------------------------------------------
+  // Message text
+  // ---------------------------------------------------------------------
+
+  // Kick's message text embeds emotes as "[emote:<id>:<name>]" rather than
+  // sending markup; kick.com's own frontend parses the placeholders, so this
+  // page has to as well. Splits content into text and emote pieces for app.js
+  // to draw.
+  //
+  // With `combine`, a run of the same emote - back to back, or with nothing
+  // but whitespace between - becomes one piece with a count, so
+  // "KEKW KEKW KEKW" is drawn once, with x3. The same emote means the same
+  // id; the name is whatever the first of the run said.
+  const EMOTE_TOKEN = /\[emote:(\d+):([^\]]*)\]/g;
+
+  function parseContent(content, { combine = false } = {}) {
+    const text = typeof content === 'string' ? content : '';
+    const parts = [];
+    let last = 0;
+    for (const m of text.matchAll(EMOTE_TOKEN)) {
+      const between = text.slice(last, m.index);
+      const prev = parts[parts.length - 1];
+      if (combine && prev && prev.type === 'emote' && prev.id === m[1] && !between.trim()) {
+        prev.count += 1;
+      } else {
+        if (between) parts.push({ type: 'text', text: between });
+        parts.push({ type: 'emote', id: m[1], name: m[2], count: 1 });
+      }
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) parts.push({ type: 'text', text: text.slice(last) });
+    return parts;
+  }
+
   return {
     EVENTS: EV,
     KickApi,
@@ -495,5 +545,6 @@
     buildPin,
     parseBadges,
     parseBadgesV2,
+    parseContent,
   };
 });

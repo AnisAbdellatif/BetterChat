@@ -35,10 +35,10 @@
 <body>
 <main>
   <h1>Privacy Policy</h1>
-  <p class="updated">BetterChat &middot; last updated 9 September 2026</p>
+  <p class="updated">BetterChat &middot; last updated 16 September 2026</p>
 
   <p>This policy covers the BetterChat website at <code>betterchat.tech</code> and the
-  &ldquo;BetterChat for Kick&rdquo; browser extension. Both are run by one independent
+  &ldquo;KickPlus&rdquo; browser extension. Both are run by one independent
   developer and are not connected to Kick.</p>
 
   <p class="lead">BetterChat has no accounts, no cookies, no advertising and no
@@ -50,10 +50,21 @@
   <p>Your settings &mdash; font, colours, filters, which badges to show and so on &mdash;
   are saved by your browser in <code>localStorage</code>, on your own device. They are
   never sent to us. Clearing your browser&rsquo;s site data removes them.</p>
-  <p>The extension stores two switches: <code>enabled</code>, whether chat replacement
-  is on, and <code>useDev</code>, whether to load the test build instead of the normal
-  one. They are kept in <code>chrome.storage.sync</code>, so Chrome may sync them
-  between devices you are signed in to. They hold no personal information.</p>
+  <p>The extension stores four settings: <code>enabled</code>, whether chat replacement
+  is on; <code>useDev</code>, whether to load the test build instead of the normal one;
+  <code>showViewers</code>, whether the live chart is on; and
+  <code>viewersRange</code>, how many minutes that chart shows. They are kept in
+  <code>chrome.storage.sync</code>, so Chrome may sync them between devices you are
+  signed in to. They hold no personal information.</p>
+  <p>While the live chart is switched on, the extension asks Kick for the current
+  channel&rsquo;s viewer count every 15 seconds, from the kick.com tab, the way
+  kick.com&rsquo;s own page loads channel details. To count active chatters it also
+  listens to that channel&rsquo;s public chat feed, the same one kick.com&rsquo;s chat
+  uses, and notes only each sender&rsquo;s Kick user id and when they last wrote; message
+  text is not kept, and entries older than 15 minutes are discarded. The readings are
+  held in your browser&rsquo;s memory (<code>chrome.storage.session</code>), so the
+  chart survives reloading the Kick tab, and are never sent to us. They are erased
+  when you switch the chart off or quit the browser.</p>
   <p>Where the extension gives moderators delete, timeout and ban buttons, it reads
   your Kick login token from your browser only to make that one request to Kick, as
   you, the way kick.com&rsquo;s own page does. The token is read per action, is never

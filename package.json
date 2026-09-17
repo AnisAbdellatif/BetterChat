@@ -5,6 +5,6 @@
   "description": "BetterChat frontend checks (the app itself is run with uv, see README)",
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "check": "node --check site/app.js && node --check site/kick.js && node --check site/config.js && node --check site/sw.js"
+    "check": "node --check site/app.js && node --check site/settings.js && node --check site/kick.js && node --check site/config.js && node --check site/sw.js"
   }
 }

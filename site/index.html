@@ -63,7 +63,9 @@
   /* "Scroll back through history" off: the list is always pinned to the
      newest message and can't be scrolled. */
   body.no-scrollback #messages { overflow-y: hidden; }
-  body.has-pin #messages { padding-top: 3.2em; }
+  /* Room for the pinned banner, at its real height (app.js keeps --pin-height
+     current), so a long pin never covers the first messages. */
+  body.has-pin #messages { padding-top: calc(var(--pin-height, 2.6em) + 12px); }
 
   .msg { padding: 2px 4px; border-radius: 4px; transition: opacity 0.4s; }
   .msg:hover { background: rgba(255, 255, 255, 0.04); }
@@ -246,6 +248,139 @@
   .mod-delete:hover { color: #ff6b6b; }
   .mod-delete:disabled { opacity: 0.4; cursor: default; }
 
+  .mod-pin {
+    position: absolute;
+    top: 2px;
+    right: 28px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.6);
+    color: #adadb8;
+    line-height: 1;
+    cursor: pointer;
+  }
+  /* Upright it reads as a plus; Kick's own is tilted. */
+  .mod-pin svg { width: 19px; height: 19px; transform: rotate(45deg); }
+  body.can-moderate .msg:hover .mod-pin { display: flex; }
+  .mod-pin:hover { color: #53fc18; }
+  .mod-pin:disabled { opacity: 0.4; cursor: default; }
+
+  /* Replying. Also extension-only, but a separate permission: anyone signed
+     in can reply, where moderating needs the badge for it. So it has a body
+     class of its own, and either button can appear without the other. */
+  body.can-reply .msg { position: relative; }
+  .msg-reply {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.6);
+    color: #adadb8;
+    line-height: 1;
+    cursor: pointer;
+  }
+  /* Bigger than the icon looks like it should be: the delete button beside it
+     is a 19px glyph, and a 15px arrow next to it read as an afterthought. */
+  .msg-reply svg { width: 19px; height: 19px; }
+  /* The three stack from the right: delete, pin, reply. Each only claims its
+     slot when the ones to its right are actually drawn, so a viewer who can
+     reply but not moderate gets no gap where the others would have been. */
+  body.can-moderate .msg-reply { right: 54px; }
+  body.can-reply .msg:hover .msg-reply { display: flex; }
+  .msg-reply:hover { color: #53fc18; }
+
+  /* What the next message will reply to. At the bottom: it belongs with
+     Kick's message box, which is just below this frame. It shows the message
+     itself - name colour, badges, emotes - rather than a line of grey text,
+     so it is recognised at a glance instead of read. */
+  #replyBar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 6;
+    box-sizing: border-box;
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 7px 4px 8px 10px;
+    background: #1b2126;
+    border-top: 1px solid #2f3a41;
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.4);
+  }
+  #replyBar[hidden] { display: none; }
+  #replyBar .rb-body {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  #replyBar .rb-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #efeff1;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  #replyBar .rb-icon { width: 16px; height: 16px; flex: 0 0 auto; color: #adadb8; }
+  /* The quoted message, in the chat's own font and size: it is a message, and
+     the settings that govern messages should govern it. */
+  #replyBar .rb-msg {
+    min-width: 0;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: #22282d;
+    border-left: 3px solid #53fc18;
+    font-size: var(--chat-font-size);
+    font-family: var(--chat-font-family);
+    line-height: 1.5;
+    /* Two lines of it is enough to know which message it was; a wall of text
+       must not push the chat up. */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+  }
+  #replyBar .rb-msg .user { font-weight: 700; }
+  #replyBar .rb-msg .badge { vertical-align: text-bottom; }
+  #replyBar .rb-cancel {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #adadb8;
+    cursor: pointer;
+  }
+  #replyBar .rb-cancel svg { width: 15px; height: 15px; }
+  #replyBar .rb-cancel:hover { background: #2a3238; color: #efeff1; }
+  /* The bar covers the foot of the list, so the last message clears it. It is
+     two lines plus the heading now, so more room than the old single line. */
+  body.replying #messages { padding-bottom: 76px; }
+  body.replying #jumpLatest { bottom: 80px; }
+
   .uc-mod {
     display: flex;
     flex-wrap: wrap;
@@ -292,6 +427,18 @@
     height: 1.7em;
     vertical-align: middle;
     margin: -4px 1px;
+  }
+  /* One emote spammed back to back, drawn once with its count: KEKW ×12. */
+  .emote-combo { white-space: nowrap; }
+  .combo-count {
+    margin: 0 0.3em 0 0.1em;
+    color: #53fc18;
+    font-weight: 800;
+    font-style: italic;
+    font-size: 0.9em;
+    vertical-align: middle;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 6px rgba(83, 252, 24, 0.45);
   }
   .system {
     color: #adadb8;
@@ -342,7 +489,21 @@
   }
   #pinned[hidden] { display: none; }
   #pinned .pin-icon { flex: 0 0 auto; }
-  #pinned .pin-body { flex: 1 1 auto; min-width: 0; }
+  /* The body scrolls inside the banner rather than spilling out of it: a long
+     pin stays within a few lines, and unbroken text (links, spam) wraps
+     instead of running past the edge. Icon and close button stay put. */
+  #pinned .pin-body {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-height: min(40vh, 7.5em);
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  }
+  /* The list's emotes sit on negative margins, which would poke out past the
+     banner's padding. */
+  #pinned .emote { height: 1.5em; margin: -2px 1px; }
   #pinned .pin-label { color: #adadb8; font-size: 0.85em; margin-right: 0.4em; }
   #pinned .user { font-weight: 700; }
   #closePin {
@@ -356,6 +517,27 @@
     padding: 0 2px;
   }
   #closePin:hover { color: #efeff1; }
+  /* Unpin takes the banner off everyone's chat, where the button beside it
+     only hides it here, so it follows the moderation controls rather than the
+     handshake: switching those off takes this with them. */
+  #unpinMsg {
+    flex: 0 0 auto;
+    align-self: center;
+    display: none;
+    background: none;
+    border: 1px solid #2f3a41;
+    border-radius: 5px;
+    color: #adadb8;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1;
+    padding: 4px 7px;
+    margin-right: 2px;
+  }
+  body.can-moderate #unpinMsg { display: block; }
+  #unpinMsg:hover { color: #ff6b6b; border-color: #ff6b6b; }
+  #unpinMsg:disabled { opacity: 0.4; cursor: default; }
 
   /* First-visit consent for the anonymous viewer count. Nothing is sent
      until this is answered, so it is deliberately in the way. */
@@ -424,6 +606,30 @@
     text-overflow: ellipsis;
   }
   #statusPill[hidden] { display: none; }
+  /* Shown while chat is held because the viewer scrolled up: how much has
+     arrived below, and a click back down to it. app.js sets `bottom` so it
+     stays clear of the status pill and the consent banner. */
+  #jumpLatest {
+    position: fixed;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 7;
+    padding: 5px 14px;
+    border-radius: 999px;
+    background: #1b2126;
+    border: 1px solid rgba(83, 252, 24, 0.55);
+    color: #efeff1;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  #jumpLatest:hover, #jumpLatest:focus-visible { background: #232b31; border-color: #53fc18; }
+  #jumpLatest[hidden] { display: none; }
+  body.overlay #jumpLatest { display: none; }
   #statusPill::before {
     content: "";
     display: inline-block;
@@ -443,40 +649,30 @@
   body.overlay { background: transparent; }
   body.overlay #messages { overflow-y: hidden; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 6px rgba(0, 0, 0, 0.7); }
   body.overlay .msg:hover { background: none; }
-  body.overlay #settingsBtn { display: none; }
-  body.overlay #showPin { display: none; }
   body.overlay #statusPill { display: none; }
   body.overlay .event, body.overlay #pinned { text-shadow: none; }
   body.overlay #pinned { right: 8px; }
 
   /* Settings ------------------------------------------------------------ */
-  #settingsBtn {
+  /* The controls in the top-right corner, stacked. A flex column rather than
+     a fixed offset each, so the pin button - which comes and goes - closes
+     its own gap instead of leaving a hole in the middle of the stack. */
+  #corner {
     position: fixed;
     top: 6px;
     right: 6px;
-    width: 30px;
-    height: 30px;
-    border: none;
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.06);
-    color: #adadb8;
-    cursor: pointer;
-    opacity: 0.35;
-    transition: opacity 0.15s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     z-index: 6;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
-  #settingsBtn:hover, #settingsBtn:focus-visible { opacity: 1; color: #efeff1; }
-  #settingsBtn svg { width: 18px; height: 18px; }
-
-  /* Brings back a pinned message that was hidden. Sits under the gear, and
-     only exists while there is a pin to bring back. */
-  #showPin {
-    position: fixed;
-    top: 42px;
-    right: 6px;
+  body.overlay #corner { display: none; }
+  /* An overlay is on a stream, not beside Kick's message box: nothing there
+     can send a reply. initModeration bails in overlay mode so neither should
+     ever appear, but these keep a stray one off a broadcast. */
+  body.overlay .msg-reply, body.overlay #replyBar { display: none; }
+  body.overlay.replying #messages { padding-bottom: 10px; }
+  .corner-btn {
     width: 30px;
     height: 30px;
     border: none;
@@ -491,12 +687,14 @@
     justify-content: center;
     font-size: 15px;
     line-height: 1;
-    z-index: 6;
   }
-  #showPin:hover, #showPin:focus-visible { opacity: 1; }
+  .corner-btn:hover, .corner-btn:focus-visible { opacity: 1; color: #efeff1; }
   /* display:flex above would otherwise beat the browser's [hidden] rule. */
-  #showPin[hidden] { display: none; }
+  .corner-btn[hidden] { display: none; }
+  .corner-btn svg { width: 18px; height: 18px; }
 
+  /* Brings back a pinned message that was hidden. Sits under the gear, and
+     only exists while there is a pin to bring back. */
   #settingsOverlay {
     position: fixed;
     inset: 0;
@@ -549,6 +747,9 @@
 
   .tabs {
     display: flex;
+    /* Six tabs, and the panel is only as wide as the viewport inside the
+       kick.com embed - so let them run onto a second row rather than clip. */
+    flex-wrap: wrap;
     gap: 2px;
     border-bottom: 1px solid #2a3035;
     margin-bottom: 12px;
@@ -723,6 +924,34 @@
   }
   .buttons button:hover { background: #2a3238; border-color: #53fc18; }
   .buttons button.danger:hover { border-color: #ff6b6b; }
+
+  /* The build hash, in the About tab. Monospace and selectable: it is meant
+     to be read out or pasted into a bug report. */
+  .build-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .build-row code {
+    flex: 0 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 4px 8px;
+    border-radius: 5px;
+    background: #0b0e0f;
+    border: 1px solid #2a3035;
+    color: #53fc18;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    user-select: all;
+  }
+  .build-row button {
+    flex: 0 0 auto;
+    background: #22282d;
+    border: 1px solid #2f3a41;
+    border-radius: 5px;
+    color: #efeff1;
+    padding: 5px 10px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .build-row button:hover { background: #2a3238; border-color: #53fc18; }
   #actionNote { color: #53fc18; font-size: 12px; margin-top: 6px; min-height: 1.2em; }
   #actionNote.error { color: #ff6b6b; }
 </style>
@@ -731,6 +960,10 @@
   <div id="pinned" hidden>
     <span class="pin-icon">📌</span>
     <div class="pin-body"><span class="pin-label">Pinned</span><span id="pinContent"></span></div>
+    <!-- Unpin is for everyone in the channel; hide is for this tab alone. The
+         one that changes what others see is the one that has to be told
+         apart, hence the word rather than another glyph. -->
+    <button id="unpinMsg" type="button" title="Unpin for everyone" aria-label="Unpin for everyone">Unpin</button>
     <button id="closePin" type="button" title="Hide pinned message" aria-label="Hide pinned message">&minus;</button>
   </div>
 
@@ -739,6 +972,12 @@
   <div id="userCard" hidden role="dialog" aria-label="User card"></div>
 
   <div id="statusPill" hidden role="status" aria-live="polite"></div>
+
+  <button id="jumpLatest" type="button" hidden aria-live="polite"></button>
+
+  <!-- What the next message typed into Kick's box will reply to. Only ever
+       shown inside the KickPlus extension, which is what sends it. -->
+  <div id="replyBar" hidden role="status" aria-live="polite"></div>
 
   <!-- Asked once, on the first visit. Until it is answered nothing is sent. -->
   <div id="consent" hidden role="dialog" aria-labelledby="consentTitle" aria-describedby="consentText">
@@ -757,14 +996,24 @@
 
   <div id="replyTip" hidden role="tooltip"></div>
 
-  <button id="settingsBtn" type="button" title="Settings" aria-label="Settings">
+  <div id="corner">
+  <button id="settingsBtn" class="corner-btn" type="button" title="Settings" aria-label="Settings">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="12" cy="12" r="3"></circle>
       <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path>
     </svg>
   </button>
 
-  <button id="showPin" type="button" hidden title="Show pinned message" aria-label="Show pinned message">📌</button>
+  <button id="clearChat" class="corner-btn" type="button" title="Clear the chat shown here (this tab only)" aria-label="Clear the chat shown here, this tab only">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M7 21l-4.3-4.3a2.4 2.4 0 0 1 0-3.4l9.6-9.6a2.4 2.4 0 0 1 3.4 0l5.6 5.6a2.4 2.4 0 0 1 0 3.4L13 21"></path>
+      <path d="M22 21H7"></path>
+      <path d="M5 11l9 9"></path>
+    </svg>
+  </button>
+
+  <button id="showPin" class="corner-btn" type="button" hidden title="Show pinned message" aria-label="Show pinned message">📌</button>
+  </div>
 
   <div id="settingsOverlay" hidden>
     <div id="settingsPanel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
@@ -774,10 +1023,12 @@
 
       <div class="tabs" role="tablist">
         <button type="button" role="tab" data-tab="appearance" aria-selected="true">Appearance</button>
+        <button type="button" role="tab" data-tab="behavior">Behavior</button>
         <button type="button" role="tab" data-tab="badges">Badges</button>
         <button type="button" role="tab" data-tab="filters">Filters</button>
         <button type="button" role="tab" data-tab="events">Events</button>
         <button type="button" role="tab" data-tab="share">Overlay &amp; sharing</button>
+        <button type="button" role="tab" data-tab="about">About</button>
       </div>
 
       <!-- Appearance ------------------------------------------------- -->
@@ -828,7 +1079,10 @@
             </span>
           </div>
         </div>
+      </div>
 
+      <!-- Behavior ----------------------------------------------- -->
+      <div class="tab-panel" data-tab-panel="behavior" role="tabpanel" hidden>
         <div class="setting">
           <label class="toggle-row">
             <span><span class="label">User cards</span>
@@ -882,28 +1136,23 @@
       <div class="tab-panel" data-tab-panel="filters" role="tabpanel" hidden>
         <div class="setting">
           <label class="toggle-row">
-            <span><span class="label">Filter messages a user repeats</span>
-              <div class="desc">Acts when the same user posts the same message (text or emotes) again soon after. Other users posting the same thing are not affected.</div></span>
+            <span><span class="label">Count messages a user repeats</span>
+              <div class="desc">When the same user posts the same message (text or emotes) again soon after, it is counted onto the copy already on screen as &times;2, &times;3, ... instead of being shown again. Other users posting the same thing are not affected.</div></span>
             <input type="checkbox" data-setting="dedupe" /><span class="switch"></span>
           </label>
           <div class="sub" data-sub="dedupe">
-            <label for="dedupeMode">What to do with the repeat</label>
-            <select id="dedupeMode" data-setting="dedupeMode">
-              <option value="hide">Hide it</option>
-              <option value="count">Count it on the first copy (&times;2, &times;3, ...)</option>
-            </select>
             <label for="dedupeWindow">Timespan (seconds)</label>
             <input id="dedupeWindow" type="number" min="1" max="3600" step="1" data-setting="dedupeWindowSec" />
-            <label for="dedupeRepeats">Times a user may post it before that applies</label>
+            <label for="dedupeRepeats">Times a user may post it before it is counted</label>
             <input id="dedupeRepeats" type="number" min="1" max="100" step="1" data-setting="dedupeRepeats" />
-            <div class="field-desc">1 = the first copy is shown and every repeat within the timespan is filtered. 2 = the first two are shown, and so on.</div>
+            <div class="field-desc">1 = the first copy is shown and every repeat within the timespan is counted onto it. 2 = the first two are shown, and so on.</div>
           </div>
         </div>
 
         <div class="setting">
           <label class="toggle-row">
-            <span><span class="label">Collapse repeated emotes</span>
-              <div class="desc">The same emote spammed back-to-back in one message is shown once.</div></span>
+            <span><span class="label">Combine repeated emotes</span>
+              <div class="desc">The same emote spammed back-to-back in one message is shown once, with a count beside it (&times;12).</div></span>
             <input type="checkbox" data-setting="collapseEmotes" /><span class="switch"></span>
           </label>
         </div>
@@ -935,7 +1184,7 @@
             <input type="checkbox" data-setting="showModeration" /><span class="switch"></span>
           </label>
           <!-- Only shown where moderating is actually possible: inside the
-               BetterChat extension, signed in to Kick. -->
+               KickPlus extension, signed in to Kick. -->
           <label class="toggle-row mod-only" style="margin-top: 8px">
             <span><span class="label">Moderation controls</span>
               <div class="desc">Delete on a message, and timeout / ban / unban on a user card. Turn off to watch without them.</div></span>
@@ -1012,10 +1261,39 @@
           </label>
         </div>
       </div>
+
+      <div class="tab-panel" data-tab-panel="about" role="tabpanel" hidden>
+        <div class="setting">
+          <div class="section-title">Build</div>
+          <div class="section-desc">
+            The site has no version number: every file is served under its own
+            name, so what identifies a build is a hash of all of them. This is
+            that hash, and the service worker names its cache after it. Quote it
+            in a bug report and it says exactly which copy you were looking at.
+          </div>
+          <div class="build-row">
+            <code id="buildId">checking...</code>
+            <button id="copyBuild" type="button" hidden>Copy</button>
+          </div>
+          <div id="buildNote" class="section-desc"></div>
+        </div>
+
+        <div class="setting">
+          <div class="section-title">BetterChat</div>
+          <div class="section-desc">
+            A replacement chat for <a href="https://kick.com" target="_blank" rel="noopener">kick.com</a>,
+            in the browser: messages come straight from Kick to this page.
+            Inside the KickPlus extension it also moderates and replies, using
+            your own Kick session on the kick.com side.
+            <a href="/privacy" target="_blank" rel="noopener">Privacy</a>.
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
   <script src="/config.js"></script>
+  <script src="/settings.js"></script>
   <script src="/kick.js"></script>
   <script src="/app.js"></script>
 </body>

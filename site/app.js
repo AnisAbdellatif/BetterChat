@@ -1,9 +1,12 @@
-(function () {
+// The page starts once defaults.json has arrived (settings.js fetches it):
+// every setting's starting value comes from there. If it cannot be had, the
+// handler at the very bottom says so on the page.
+BetterChatSettings.ready.then(function () {
   'use strict';
 
   const messagesEl = document.getElementById('messages');
+  const replyBarEl = document.getElementById('replyBar');
   const SVG_NS = 'http://www.w3.org/2000/svg';
-  const KICK_GREEN = '#53fc18';
 
   const query = new URLSearchParams(location.search);
 
@@ -38,181 +41,16 @@
   // Settings (per viewer, kept in localStorage; can be overridden by URL)
   // ---------------------------------------------------------------------
 
-  const SETTINGS_KEY = 'betterchat.settings';
-  // Storage key from before the rename - read once so nobody loses settings.
-  const LEGACY_SETTINGS_KEY = 'kick-chat-relay.settings';
-  // With scrollback off the list is always pinned to the newest message, so
-  // only a screenful or so needs to exist in the DOM.
-  const PINNED_HISTORY = 100;
-
-  // Keys are what the <select> in the settings panel offers; values are the
-  // CSS font stacks. "custom" is handled separately (free-text font name).
-  const FONT_STACKS = Object.freeze({
-    system: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
-    inter: 'Inter, "Segoe UI", Roboto, Arial, sans-serif',
-    segoe: '"Segoe UI", Tahoma, Arial, sans-serif',
-    roboto: 'Roboto, "Segoe UI", Arial, sans-serif',
-    arial: 'Arial, Helvetica, sans-serif',
-    verdana: 'Verdana, Geneva, sans-serif',
-    tahoma: 'Tahoma, Geneva, sans-serif',
-    trebuchet: '"Trebuchet MS", Helvetica, sans-serif',
-    georgia: 'Georgia, "Times New Roman", serif',
-    times: '"Times New Roman", Times, serif',
-    mono: 'Consolas, "Cascadia Mono", "Courier New", monospace',
-    comic: '"Comic Sans MS", "Comic Sans", cursive',
-  });
-
-  // Every badge is classified into one of these kinds so it can be shown or
-  // hidden from the settings panel. Channel badge types map to themselves
-  // ("other" for types we don't know); global badges are "level" or
-  // "event" (everything else Kick hands out with an image_url).
-  const BADGE_KINDS = Object.freeze([
-    'broadcaster', 'staff', 'moderator', 'verified', 'founder', 'og', 'vip',
-    'sub_gifter', 'subscriber', 'bot', 'level', 'event', 'other',
-  ]);
-
-  const DELETED_MODES = Object.freeze(['gray', 'remove', 'keep']);
-  // What to do with a message the filter counts as a repeat: drop it, or add
-  // it to the copy already on screen as "xN".
-  const DEDUPE_MODES = Object.freeze(['hide', 'count']);
-  // The anonymous viewer count. "ask" is the state before the viewer has
-  // answered the banner, and is why this is not simply a boolean: a decline
-  // has to be distinguishable from a question not yet put.
-  const STATS_CHOICES = Object.freeze(['ask', 'on', 'off']);
-  const TIMESTAMP_FORMATS = Object.freeze(['hm', 'hms']);
-
-  // Shown next to the checkbox for each kind in the settings panel.
-  const BADGE_LABELS = Object.freeze({
-    broadcaster: 'Broadcaster',
-    staff: 'Kick staff',
-    moderator: 'Moderator',
-    verified: 'Verified',
-    founder: 'Founder',
-    og: 'OG',
-    vip: 'VIP',
-    sub_gifter: 'Sub gifter',
-    subscriber: 'Subscriber',
-    bot: 'Bot',
-    level: 'Chat level',
-    event: 'Event / other Kick badges',
-    other: 'Unknown badge types',
-  });
-
-  const DEFAULTS = Object.freeze({
-    hiddenBadges: ['level'],
-    // The order badges are drawn in, left to right. Not Kick's own order:
-    // rank first, then the flavour badges. Must name every kind in
-    // BADGE_KINDS - sanitize appends any that are missing.
-    badgeOrder: [
-      'level', 'broadcaster', 'staff', 'moderator', 'founder', 'og', 'vip',
-      'subscriber', 'verified', 'event', 'other', 'sub_gifter', 'bot',
-    ],
-    fontSize: 20,
-    fontFamily: 'mono',
-    customFont: '',
-    bgColor: '#0b0e0f',
-    messageGap: 2,
-    userCards: true,
-    timestamps: false,
-    timestampFormat: 'hm',
-    mentionMe: '',
-    scrollback: true,
-    historyLimit: 1000,
-    monocolor: false,
-    monocolorValue: KICK_GREEN,
-    dedupe: true,
-    dedupeWindowSec: 5,
-    dedupeRepeats: 1,
-    dedupeMode: 'hide',
-    stats: 'ask',
-    collapseEmotes: true,
-    deletedMessages: 'gray',
-    showModeration: true,
-    // The moderation controls themselves, where they are possible at all.
-    modTools: true,
-    showPinned: true,
-    // Pinned messages arrive collapsed, and only open when the viewer says so.
-    collapsePinned: false,
-    showSubs: true,
-    showGifts: true,
-    showHosts: true,
-    overlayFadeSec: 0,
-  });
-
-  const HEX6 = /^#[0-9a-f]{6}$/i;
-
-  // A font name ends up inside a CSS value, so only plain characters are
-  // kept - no quotes, semicolons, braces or url()-style punctuation.
-  function cleanFontName(value) {
-    if (typeof value !== 'string') return '';
-    return value.replace(/[^\w\s-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60);
-  }
-
-  function cleanUsername(value) {
-    if (typeof value !== 'string') return '';
-    return value.replace(/^@/, '').replace(/[^\w-]/g, '').slice(0, 30);
-  }
-
-  function clampInt(value, min, max, fallback) {
-    const n = Math.round(Number(value));
-    if (!Number.isFinite(n)) return fallback;
-    return Math.min(max, Math.max(min, n));
-  }
-
-  function oneOf(value, allowed, fallback) {
-    return allowed.includes(value) ? value : fallback;
-  }
-
-  // Never trust what's in storage or the URL blindly - it's validated field
-  // by field, and unknown keys are dropped.
-  function sanitize(raw) {
-    const s = { ...DEFAULTS };
-    if (!raw || typeof raw !== 'object') return s;
-    for (const key of Object.keys(DEFAULTS)) {
-      if (typeof DEFAULTS[key] === 'boolean' && typeof raw[key] === 'boolean') s[key] = raw[key];
-    }
-    if (Array.isArray(raw.hiddenBadges)) {
-      s.hiddenBadges = BADGE_KINDS.filter((kind) => raw.hiddenBadges.includes(kind));
-    }
-    // A stored order can be stale (a kind added since it was saved), short, or
-    // simply junk from a hand-edited URL, so rebuild it as a real permutation
-    // of BADGE_KINDS: the kinds it names, in its order, then whatever it left
-    // out in the default order. Always a fresh array - DEFAULTS is shared.
-    const placed = new Set();
-    const order = [];
-    const take = (kinds) => {
-      for (const kind of kinds) {
-        if (BADGE_KINDS.includes(kind) && !placed.has(kind)) {
-          placed.add(kind);
-          order.push(kind);
-        }
-      }
-    };
-    take(Array.isArray(raw.badgeOrder) ? raw.badgeOrder : []);
-    take(DEFAULTS.badgeOrder);
-    take(BADGE_KINDS); // backstop, in case a kind is missing from the default
-    s.badgeOrder = order;
-    s.fontSize = clampInt(raw.fontSize, 8, 40, DEFAULTS.fontSize);
-    s.messageGap = clampInt(raw.messageGap, 0, 40, DEFAULTS.messageGap);
-    if (raw.fontFamily === 'custom' || FONT_STACKS[raw.fontFamily]) s.fontFamily = raw.fontFamily;
-    s.customFont = cleanFontName(raw.customFont);
-    s.timestampFormat = oneOf(raw.timestampFormat, TIMESTAMP_FORMATS, DEFAULTS.timestampFormat);
-    s.mentionMe = cleanUsername(raw.mentionMe);
-    s.historyLimit = clampInt(raw.historyLimit, 10, 5000, DEFAULTS.historyLimit);
-    s.dedupeWindowSec = clampInt(raw.dedupeWindowSec, 1, 3600, DEFAULTS.dedupeWindowSec);
-    s.dedupeRepeats = clampInt(raw.dedupeRepeats, 1, 100, DEFAULTS.dedupeRepeats);
-    if (typeof raw.monocolorValue === 'string' && HEX6.test(raw.monocolorValue)) {
-      s.monocolorValue = raw.monocolorValue.toLowerCase();
-    }
-    if (typeof raw.bgColor === 'string' && HEX6.test(raw.bgColor)) {
-      s.bgColor = raw.bgColor.toLowerCase();
-    }
-    s.deletedMessages = oneOf(raw.deletedMessages, DELETED_MODES, DEFAULTS.deletedMessages);
-    s.dedupeMode = oneOf(raw.dedupeMode, DEDUPE_MODES, DEFAULTS.dedupeMode);
-    s.stats = oneOf(raw.stats, STATS_CHOICES, DEFAULTS.stats);
-    s.overlayFadeSec = clampInt(raw.overlayFadeSec, 0, 600, DEFAULTS.overlayFadeSec);
-    return s;
-  }
+  // The settings model lives in settings.js (no DOM, so it can be tested on
+  // its own). Pulled into scope here so the rest of this file reads the same
+  // as when it was all one.
+  const {
+    SETTINGS_KEY, LEGACY_SETTINGS_KEY, PINNED_HISTORY, KICK_GREEN, FONT_STACKS,
+    BADGE_KINDS, BADGE_LABELS, DELETED_MODES, STATS_CHOICES,
+    TIMESTAMP_FORMATS, DEFAULTS, NOT_SHAREABLE, HEX6,
+    cleanFontName, cleanUsername, clampInt, oneOf, sanitize,
+    settingsFromQuery, settingsAsParams, fontFamilyCss,
+  } = BetterChatSettings;
 
   function loadStoredSettings() {
     try {
@@ -224,33 +62,7 @@
     }
   }
 
-  // Consent is not something a link can grant on someone else's behalf, so it
-  // stays out of the URL in both directions and out of an exported file. It
-  // changes by the banner or its own switch, in the viewer's own browser, or
-  // it does not change.
-  //
-  // Declared here rather than beside settingsAsParams below: settingsFromUrl
-  // runs while this file is still being evaluated, so anything it reads has
-  // to exist by this line.
-  const NOT_SHAREABLE = new Set(['stats']);
-
-  // Settings in the URL: ?fontSize=16&monocolor=1&hiddenBadges=level,event
-  // Booleans accept 1/0/true/false/on/off, arrays are comma-separated.
-  function settingsFromUrl() {
-    const out = {};
-    for (const key of Object.keys(DEFAULTS)) {
-      if (NOT_SHAREABLE.has(key) || !query.has(key)) continue;
-      const v = query.get(key);
-      const kind = Array.isArray(DEFAULTS[key]) ? 'array' : typeof DEFAULTS[key];
-      if (kind === 'boolean') out[key] = ['1', 'true', 'on'].includes(v.toLowerCase());
-      else if (kind === 'number') out[key] = Number(v);
-      else if (kind === 'array') out[key] = v.split(',').map((x) => x.trim()).filter(Boolean);
-      else out[key] = v;
-    }
-    return out;
-  }
-
-  const urlSettings = settingsFromUrl();
+  const urlSettings = settingsFromQuery(query);
   const settingsFromUrlOnly = Object.keys(urlSettings).length > 0;
 
   let settings = sanitize({ ...loadStoredSettings(), ...urlSettings });
@@ -263,20 +75,6 @@
     } catch (_e) {
       /* private mode / storage disabled - settings just won't persist */
     }
-  }
-
-  // Only the settings that differ from the defaults, as URL parameters.
-  function settingsAsParams(target) {
-    const params = new URLSearchParams();
-    for (const key of Object.keys(DEFAULTS)) {
-      if (NOT_SHAREABLE.has(key)) continue;
-      const value = target[key];
-      if (JSON.stringify(value) === JSON.stringify(DEFAULTS[key])) continue;
-      if (typeof value === 'boolean') params.set(key, value ? '1' : '0');
-      else if (Array.isArray(value)) params.set(key, value.join(','));
-      else params.set(key, String(value));
-    }
-    return params;
   }
 
   function settingsLink(withOverlay) {
@@ -300,21 +98,17 @@
     return HEX_COLOR.test(kickColor || '') ? kickColor : KICK_GREEN;
   }
 
-  function fontFamilyCss() {
-    if (settings.fontFamily === 'custom') {
-      // Fall back to the default stack if the custom name is empty or the
-      // font isn't installed (the browser skips unknown families).
-      return settings.customFont
-        ? `"${settings.customFont}", ${FONT_STACKS.system}`
-        : FONT_STACKS.system;
-    }
-    return FONT_STACKS[settings.fontFamily] || FONT_STACKS.system;
-  }
 
   // Re-applies everything that affects messages already on screen.
   function applySettings() {
+    // Font, spacing and timestamps all change row heights, so a viewer who
+    // has scrolled up keeps their place through a change made while reading.
+    keepingView(applySettingsNow);
+  }
+
+  function applySettingsNow() {
     document.documentElement.style.setProperty('--chat-font-size', `${settings.fontSize}px`);
-    document.documentElement.style.setProperty('--chat-font-family', fontFamilyCss());
+    document.documentElement.style.setProperty('--chat-font-family', fontFamilyCss(settings));
     // Overlay mode keeps a transparent body regardless (body.overlay CSS).
     document.documentElement.style.setProperty('--chat-bg', settings.bgColor);
     document.documentElement.style.setProperty('--chat-gap', `${settings.messageGap}px`);
@@ -323,39 +117,67 @@
     document.body.classList.toggle('user-cards', settings.userCards && !overlayMode);
     if (!settings.userCards) closeUserCard();
     trimHistory();
-    for (const user of messagesEl.querySelectorAll('.msg > .user')) {
-      user.style.color = usernameColor(user.dataset.kickColor);
-    }
-    for (const badge of messagesEl.querySelectorAll('.badge[data-kind]')) {
-      badge.toggleAttribute('hidden', isBadgeHidden(badge.dataset.kind));
-    }
-    for (const wrap of messagesEl.querySelectorAll('.badges')) {
-      sortBadgeWrap(wrap);
-    }
-    for (const ts of messagesEl.querySelectorAll('.ts[data-time]')) {
-      ts.textContent = formatTime(ts.dataset.time);
-    }
-    for (const row of messagesEl.querySelectorAll('.msg[data-text]')) {
-      row.classList.toggle('mentions-me', mentionsMe(row.dataset.text));
-    }
+    applyModerationState(); // sets the body class restyleRows reads
+    restyleRows();
     applyPinVisibility();
-    applyModerationState();
     applyBeats();
     showConsentIfUnanswered();
+    updateJumpPill(); // scrollback may have just been turned off
+  }
+
+  // Everything on an existing message that a setting can change, in one walk
+  // of the list instead of one walk per setting. The list can hold thousands
+  // of rows, and the colour picker and hex field update live, so this runs on
+  // every input event while a colour is being dragged.
+  function restyleRows() {
+    const withTools = modEnabled();
+    const withReply = replyAvailable;
+    for (const row of messagesEl.querySelectorAll('.msg')) {
+      const user = row.querySelector(':scope > .user');
+      if (user) user.style.color = usernameColor(user.dataset.kickColor);
+
+      for (const badge of row.querySelectorAll('.badge[data-kind]')) {
+        badge.toggleAttribute('hidden', isBadgeHidden(badge.dataset.kind));
+      }
+      const badges = row.querySelector('.badges');
+      if (badges) sortBadgeWrap(badges);
+
+      const ts = row.querySelector('.ts[data-time]');
+      if (ts) ts.textContent = formatTime(ts.dataset.time);
+
+      if (row.dataset.text !== undefined) {
+        row.classList.toggle('mentions-me', mentionsMe(row.dataset.text));
+      }
+
+      // Rows drawn before the handshake landed have no buttons yet. Pinning
+      // is not backfilled: it needs the whole message, and a row drawn before
+      // the controls were on was not kept with one. Those rows can still be
+      // deleted and replied to, and the next message can be pinned.
+      if (withReply && canReplyTo(row) && !row.querySelector('.msg-reply')) {
+        row.appendChild(replyButton());
+      }
+      if (withTools && row.dataset.id && !row.querySelector('.mod-delete')) {
+        if (pinnable.has(row)) row.appendChild(pinButton());
+        row.appendChild(deleteButton());
+      }
+    }
   }
 
   // The pin banner changes the list's height, so showing or hiding it has to
   // re-stick the scroll - but nothing about the messages themselves changed,
-  // so it must not trigger applySettings' four full-list passes. Pins arrive
-  // on every reconnect, and the list can hold thousands of rows.
+  // so it must not go through applySettings and walk the list. Pins arrive on
+  // every reconnect, and the list can hold thousands of rows.
   function applyPinVisibility() {
-    // A live pin the viewer has hidden is not gone: the banner goes away and
-    // the button under the gear appears to bring it back.
-    const live = settings.showPinned && pinnedActive;
-    pinnedEl.hidden = !live || pinHidden;
-    showPinBtn.hidden = !live || !pinHidden;
-    document.body.classList.toggle('has-pin', !pinnedEl.hidden);
-    stickIfFollowing();
+    // The banner pads the top of the list, so a viewer scrolled up keeps
+    // their place when it comes or goes.
+    keepingView(() => {
+      // A live pin the viewer has hidden is not gone: the banner goes away and
+      // the button under the gear appears to bring it back.
+      const live = settings.showPinned && pinnedActive;
+      pinnedEl.hidden = !live || pinHidden;
+      showPinBtn.hidden = !live || !pinHidden;
+      document.body.classList.toggle('has-pin', !pinnedEl.hidden);
+    });
   }
 
   // ---------------------------------------------------------------------
@@ -617,6 +439,10 @@
   function showTab(name) {
     for (const b of tabButtons) b.setAttribute('aria-selected', String(b.dataset.tab === name));
     for (const p of tabPanels) p.hidden = p.dataset.tabPanel !== name;
+    // Read when the tab is opened rather than at startup: a deploy can land
+    // while the panel is closed, and this is the one place that would then be
+    // showing something that is no longer true.
+    if (name === 'about') showBuild();
   }
 
   for (const b of tabButtons) b.addEventListener('click', () => showTab(b.dataset.tab));
@@ -688,6 +514,71 @@
     note('Settings reset.');
   });
 
+  // ---- About: which build is this ----------------------------------------
+  //
+  // There is no version number to show: nothing is bundled and no filename
+  // carries a hash, so what identifies a build is the hash of the site's
+  // files that the server computes and the service worker names its cache
+  // after. Showing it turns "it's broken on the live site" into something
+  // that names a build.
+  //
+  // Two hashes, not one. The server says what it is serving now; the cache
+  // name says what this tab is actually running, which after a deploy is the
+  // older of the two until the new worker takes over. Saying so is the point:
+  // "I'm on the latest" is the question being asked.
+
+  const buildIdEl = document.getElementById('buildId');
+  const buildNoteEl = document.getElementById('buildNote');
+  const copyBuildBtn = document.getElementById('copyBuild');
+
+  // What this tab is running, read from the cache the worker filled. Null
+  // where there is no worker at all (a fresh load, or an unsupported
+  // browser), which is not the same as being out of date.
+  async function runningBuild() {
+    if (!('caches' in window)) return null;
+    try {
+      const names = await caches.keys();
+      const mine = names.filter((n) => n.startsWith('betterchat-'));
+      // More than one only while an activate is in flight, and the worker
+      // drops the rest; with none to choose from there is nothing to report.
+      return mine.length === 1 ? mine[0].slice('betterchat-'.length) : null;
+    } catch (_e) {
+      return null;
+    }
+  }
+
+  async function showBuild() {
+    let served = null;
+    try {
+      const res = await fetch('/api/build', { cache: 'no-store' });
+      if (res.ok) served = (await res.json()).build || null;
+    } catch (_e) {
+      served = null;
+    }
+    const running = await runningBuild();
+
+    // The one this tab is actually running is the honest answer; the server's
+    // is the fallback for a tab with no worker yet.
+    const shown = running || served;
+    buildIdEl.textContent = shown || 'unknown';
+    copyBuildBtn.hidden = !shown;
+
+    if (!served && !running) {
+      // A static host with no /api/build, or offline on a first load.
+      buildNoteEl.textContent = 'This copy does not report a build.';
+    } else if (running && served && running !== served) {
+      buildNoteEl.textContent = `A newer build (${served}) is on the server. Reload twice, or close every tab, to move to it.`;
+    } else if (running) {
+      buildNoteEl.textContent = 'Up to date with the server.';
+    } else {
+      buildNoteEl.textContent = 'Serving this build now; this tab has not cached one yet.';
+    }
+  }
+
+  copyBuildBtn.addEventListener('click', async () => {
+    if (await copyText(buildIdEl.textContent)) note('Build copied.');
+  });
+
   function openSettings() {
     syncPanel();
     overlay.hidden = false;
@@ -700,6 +591,24 @@
   }
 
   settingsBtn.addEventListener('click', openSettings);
+
+  // Clears what this tab is showing, and nothing more: no request to Kick, no
+  // effect on anyone else's chat. A moderator clearing the channel is a
+  // different thing entirely, and arrives as an event.
+  document.getElementById('clearChat').addEventListener('click', () => {
+    // Rows already queued for the next frame would otherwise land right after
+    // the list was emptied.
+    pendingRows.length = 0;
+    messagesEl.replaceChildren();
+    // Every row these keys stood for has gone, so a later repeat has nothing
+    // to count onto and should start a fresh message.
+    repeatRows.clear();
+    // Nothing is left to have scrolled up through.
+    stickToBottom = true;
+    updateJumpPill();
+    closeUserCard();
+    systemLine('chat cleared');
+  });
   document.getElementById('closeSettings').addEventListener('click', closeSettings);
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) closeSettings();
@@ -712,27 +621,131 @@
   // Message list
   // ---------------------------------------------------------------------
 
-  function isNearBottom() {
-    return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 40;
+  // ---------------------------------------------------------------------
+  // Following the newest message, and holding still when the viewer scrolls
+  // up to read.
+  //
+  // `stickToBottom` is the viewer's intention, latched rather than measured
+  // again on every append (one bad reading used to leave the view off the
+  // bottom, which made every later reading bad too). Only the viewer moving
+  // the list changes it:
+  //   - any movement up lets go. An upward wheel lets go before the scroll
+  //     even lands: with smooth scrolling, the first scroll event can arrive
+  //     after an append has already pulled the view back down, and on a busy
+  //     chat that meant never getting away from the bottom at all. A button
+  //     or finger held down on the list (dragging the scrollbar, a touch
+  //     scroll, selecting text) holds it for as long as it stays down, for
+  //     the same reason.
+  //   - reaching the bottom again, or scrolling down to within a line of it,
+  //     takes hold again.
+  // Scrolls this code makes itself are recognised by where they land, and
+  // ignored.
+  //
+  // Holding also means the list does not move under the reader. Anything
+  // that can take rows away or resize them goes through keepingView(), which
+  // puts the row being read back where it was on screen. And while held, old
+  // rows are kept up to twice the history size instead of being trimmed from
+  // under the reader; the first append after they return trims back to size.
+  // ---------------------------------------------------------------------
+
+  const NEAR_BOTTOM_PX = 40;
+  let stickToBottom = true;
+  let pointerDown = false;
+  // Where this code last put scrollTop. A scroll event landing there is ours.
+  let ownScrollTop = -1;
+  let lastScrollTop = 0;
+
+  function following() {
+    return !scrollbackEnabled() || (stickToBottom && !pointerDown);
   }
 
-  // Whether new messages pull the view down with them. This is a latched
-  // intention, not a measurement taken at append time. Re-deriving it from
-  // the layout on every flush was self-defeating: one reading that came back
-  // false left the view sitting away from the bottom, which made the next
-  // reading false as well, so autoscroll stayed off until the viewer
-  // scrolled back down by hand. Only the viewer changes it now.
-  let stickToBottom = true;
+  // The pill that shows while chat is held: how many messages have arrived
+  // below since the viewer scrolled up, and a way straight back down to them.
+  const jumpBtn = document.getElementById('jumpLatest');
+  let unseenMessages = 0;
+
+  function updateJumpPill() {
+    const held = scrollbackEnabled() && !stickToBottom;
+    if (!held) unseenMessages = 0;
+    jumpBtn.hidden = !held;
+    if (!held) return;
+    // Clear of whatever else shares the bottom centre: the status pill, and
+    // the consent banner while it is still waiting for an answer - it sits
+    // on top, so the pill would otherwise be hidden under it on a first visit.
+    let bottom = 10;
+    if (!statusPill.hidden) bottom += 34;
+    if (!consentEl.hidden) {
+      bottom = Math.max(bottom, window.innerHeight - consentEl.getBoundingClientRect().top + 8);
+    }
+    jumpBtn.style.bottom = `${bottom}px`;
+    const n = unseenMessages;
+    jumpBtn.textContent = n
+      ? `${n > 999 ? '999+' : n} new message${n === 1 ? '' : 's'} ↓`
+      : 'Jump to latest ↓';
+  }
+
+  jumpBtn.addEventListener('click', () => {
+    stickToBottom = true;
+    // Trims what was kept while held and lands on the bottom.
+    keepingView(trimHistory);
+    updateJumpPill();
+  });
+
+  function setScrollTop(top) {
+    messagesEl.scrollTop = top;
+    ownScrollTop = messagesEl.scrollTop; // as the browser clamped it
+    lastScrollTop = ownScrollTop;
+  }
 
   function stickIfFollowing() {
-    if (!scrollbackEnabled() || stickToBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+    if (following()) setScrollTop(messagesEl.scrollHeight);
   }
 
-  // Our own scrolls land at the bottom, so the event they cause re-asserts
-  // the latch rather than breaking it - no guard needed for them here.
   messagesEl.addEventListener('scroll', () => {
-    stickToBottom = isNearBottom();
+    const top = messagesEl.scrollTop;
+    if (Math.abs(top - ownScrollTop) <= 1) return;
+    // The position is the viewer's from here on, so coming back to this same
+    // spot later is not mistaken for one of ours.
+    ownScrollTop = -1;
+    const movedUp = top < lastScrollTop;
+    lastScrollTop = top;
+    const distance = messagesEl.scrollHeight - top - messagesEl.clientHeight;
+    if (distance <= 1 || (!movedUp && distance < NEAR_BOTTOM_PX)) stickToBottom = true;
+    else if (movedUp) stickToBottom = false;
+    updateJumpPill();
   }, { passive: true });
+
+  messagesEl.addEventListener('wheel', (e) => {
+    // Only when the list can actually go up: a wheel on a list already at its
+    // top, or too short to scroll, moves nothing and must not stop following.
+    if (e.deltaY < 0 && !e.ctrlKey && messagesEl.scrollTop > 0) {
+      stickToBottom = false;
+      updateJumpPill();
+    }
+  }, { passive: true });
+
+  function pressList() {
+    pointerDown = true;
+  }
+
+  function releaseList() {
+    if (!pointerDown) return;
+    pointerDown = false;
+    // Whatever arrived while it was held lands now, if still following.
+    stickIfFollowing();
+  }
+
+  messagesEl.addEventListener('mousedown', pressList);
+  messagesEl.addEventListener('touchstart', pressList, { passive: true });
+  window.addEventListener('mouseup', releaseList);
+  window.addEventListener('touchend', releaseList, { passive: true });
+  window.addEventListener('touchcancel', releaseList, { passive: true });
+  window.addEventListener('blur', releaseList);
+  // A release outside the frame may never reach it; the next move with no
+  // button down settles that.
+  messagesEl.addEventListener('mousemove', (e) => {
+    if (pointerDown && e.buttons === 0) releaseList();
+  });
 
   // kick.com resizes the frame - theater mode, a collapsed sidebar, the
   // window itself - which changes clientHeight without firing any scroll
@@ -741,8 +754,51 @@
     new ResizeObserver(stickIfFollowing).observe(messagesEl);
   }
 
+  // How many rows from the top of the view are remembered, so the view can
+  // still be put back when the row at the very top is the one taken away.
+  const ANCHOR_SPAN = 20;
+
+  // Runs a change that may remove or resize rows, then puts the view back:
+  // on the bottom when following; otherwise on the same row, at the same
+  // height on screen.
+  function keepingView(change) {
+    if (following()) {
+      change();
+      stickIfFollowing();
+      return;
+    }
+    const anchors = rowsAtTop();
+    change();
+    for (const { row, top } of anchors) {
+      if (!row.isConnected) continue;
+      const moved = row.getBoundingClientRect().top - top;
+      if (moved) setScrollTop(messagesEl.scrollTop + moved);
+      return;
+    }
+  }
+
+  // The first row reaching into the view, and a few after it, each with where
+  // it is. Rows are stacked in order, so a binary search finds the first.
+  function rowsAtTop() {
+    const rows = messagesEl.children;
+    if (!rows.length) return [];
+    const viewTop = messagesEl.getBoundingClientRect().top;
+    let lo = 0;
+    let hi = rows.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (rows[mid].getBoundingClientRect().bottom <= viewTop) lo = mid + 1;
+      else hi = mid;
+    }
+    const out = [];
+    for (let i = lo; i < rows.length && out.length < ANCHOR_SPAN; i++) {
+      out.push({ row: rows[i], top: rows[i].getBoundingClientRect().top });
+    }
+    return out;
+  }
+
   function trimHistory() {
-    const limit = historyLimit();
+    const limit = following() ? historyLimit() : historyLimit() * 2;
     while (messagesEl.childElementCount > limit) {
       messagesEl.removeChild(messagesEl.firstElementChild);
     }
@@ -758,9 +814,8 @@
   }
 
   // Messages arrive in bursts - a busy channel can land several in a single
-  // frame - and appending one at a time cost two forced layouts each:
-  // isNearBottom() reads scrollTop/scrollHeight, then the scroll write reads
-  // scrollHeight again. Queue instead and flush once per frame through a
+  // frame - and appending one at a time cost a forced layout each for the
+  // scroll that follows. Queue instead and flush once per frame through a
   // fragment, so a burst costs one layout however many messages it carries.
   let pendingRows = [];
   let flushFrame = 0;
@@ -776,9 +831,14 @@
     const frag = document.createDocumentFragment();
     for (const row of rows) frag.appendChild(row);
     messagesEl.appendChild(frag);
-    trimHistory();
+    if (scrollbackEnabled() && !stickToBottom) {
+      for (const row of rows) if (row.classList.contains('msg')) unseenMessages++;
+      updateJumpPill();
+    }
+    // New rows go in below the view, so they never move what is being read;
+    // trimming old ones off the top can.
+    keepingView(trimHistory);
     for (const row of rows) scheduleFade(row);
-    stickIfFollowing();
   }
 
   function appendRow(row) {
@@ -840,13 +900,14 @@
   }
 
   // ---------------------------------------------------------------------
-  // Repeated-message filter (per user)
+  // Repeated messages (per user)
   //
   // Keyed on user + normalized content (case/whitespace-insensitive, so
-  // "Pog Pog" and "pog  pog" count as the same message). A message is
-  // hidden once the SAME user has already posted it `dedupeRepeats` times
-  // inside the last `dedupeWindowSec` seconds; other users posting the
-  // same text are unaffected.
+  // "Pog Pog" and "pog  pog" count as the same message). Once the SAME user
+  // has posted it `dedupeRepeats` times inside the last `dedupeWindowSec`
+  // seconds, a further copy is counted onto the one on screen (x2, x3, ...)
+  // instead of being drawn again; other users posting the same text are
+  // unaffected.
   // ---------------------------------------------------------------------
 
   const recentMessages = new Map(); // "user\ncontent" -> [timestamps]
@@ -901,7 +962,12 @@
   // just draw the message instead.
   function countRepeat(key) {
     const row = key ? repeatRows.get(key) : null;
-    if (!row || !row.isConnected) {
+    // A row that is still queued for the next frame counts as being there:
+    // rows are registered before they are appended, and appending waits for
+    // an animation frame. Without this, a burst of the same message - which
+    // is exactly what this feature is for - arrives while the first copy is
+    // still detached, reads it as gone, and draws every copy separately.
+    if (!row || (!row.isConnected && !pendingRows.includes(row))) {
       if (key) repeatRows.delete(key);
       return false;
     }
@@ -1130,15 +1196,10 @@
   // Message content
   // ---------------------------------------------------------------------
 
-  // Kick's raw message content embeds emotes as "[emote:<id>:<name>]" rather
-  // than pre-rendered <img> tags - the kick.com frontend's own JS parses
-  // this placeholder syntax before display, and since we're bypassing that
-  // frontend entirely, we have to do the same parsing ourselves.
-  const EMOTE_PATTERN = /\[emote:(\d+):([^\]]*)\]/g;
-
-  // "[emote:1:a] [emote:1:a][emote:1:a]" -> "[emote:1:a]". Consecutive
-  // repeats of the same emote (whitespace between them or not) become one,
-  // which covers the "message is just one emote spammed N times" case.
+  // Emote placeholders are parsed in kick.js (parseContent), where the syntax
+  // is tested. This is only for comparing messages: "[emote:1:a]
+  // [emote:1:a][emote:1:a]" -> "[emote:1:a]", so the repeat counter treats a
+  // run of one emote as the same message however long the run is.
   const REPEATED_EMOTE = /(\[emote:(\d+):[^\]]*\])(?:\s*\[emote:\2:[^\]]*\])+/g;
 
   function collapseRepeatedEmotes(content) {
@@ -1295,28 +1356,28 @@
   // controllable input (any Kick user can type it), so it must never be
   // parsed as HTML.
   function appendMessageContent(container, content) {
-    EMOTE_PATTERN.lastIndex = 0;
-    let lastIndex = 0;
-    let match;
-
-    while ((match = EMOTE_PATTERN.exec(content)) !== null) {
-      if (match.index > lastIndex) {
-        appendTextWithMentions(container, content.slice(lastIndex, match.index));
+    const parts = BetterChatKick.parseContent(content, { combine: settings.collapseEmotes });
+    for (const part of parts) {
+      if (part.type === 'text') {
+        appendTextWithMentions(container, part.text);
+        continue;
       }
-
-      const [, emoteId, emoteName] = match;
       const img = document.createElement('img');
       img.className = 'emote';
-      img.src = `https://files.kick.com/emotes/${emoteId}/fullsize`;
-      img.alt = emoteName;
-      img.title = emoteName;
-      container.appendChild(img);
-
-      lastIndex = EMOTE_PATTERN.lastIndex;
-    }
-
-    if (lastIndex < content.length) {
-      appendTextWithMentions(container, content.slice(lastIndex));
+      img.src = `https://files.kick.com/emotes/${part.id}/fullsize`;
+      img.alt = part.name;
+      img.title = part.name;
+      if (part.count === 1) {
+        container.appendChild(img);
+        continue;
+      }
+      // One emote spammed back to back: drawn once, with its count beside it
+      // combo-style. Wrapped together so the count can never wrap onto a line
+      // of its own, away from its emote.
+      const combo = el('span', 'emote-combo');
+      combo.appendChild(img);
+      combo.appendChild(el('span', 'combo-count', `×${part.count}`));
+      container.appendChild(combo);
     }
   }
 
@@ -1348,19 +1409,27 @@
   function appendMessage(msg) {
     recordUserHistory(msg);
 
-    // Collapse first so the repeat filter compares what would be displayed:
-    // "KEKW KEKW KEKW" and "KEKW KEKW" are the same message once collapsed.
-    const content = settings.collapseEmotes ? collapseRepeatedEmotes(msg.content) : msg.content;
-    const { key: repeatKey, repeat } = repeatState(msg.username, content);
-    // In "count" mode a repeat is added to the message already on screen; if
-    // that message is gone, countRepeat says so and this one is drawn fresh.
-    if (repeat && (settings.dedupeMode !== 'count' || countRepeat(repeatKey))) return;
+    // With emotes combined, "KEKW KEKW KEKW" and "KEKW KEKW" draw as the same
+    // emote with a different count, so they count as the same message too.
+    const compared = settings.collapseEmotes ? collapseRepeatedEmotes(msg.content) : msg.content;
+    const { key: repeatKey, repeat } = repeatState(msg.username, compared);
+    // A repeat is added to the copy already on screen. If that copy is gone -
+    // trimmed out of history, say - countRepeat says so and this one is drawn
+    // fresh instead.
+    if (repeat && countRepeat(repeatKey)) return;
+    const content = msg.content;
 
     const row = document.createElement('div');
     row.className = 'msg';
     row.dataset.id = msg.id;
     row.dataset.user = (msg.username || '').toLowerCase();
     row.dataset.text = content;
+    // Replying needs the sender exactly as Kick spells them, where data-user
+    // is lowercased for matching, and their numeric id. Both are only set
+    // when there is something to set: the reply button reads them, so a row
+    // without them offers no button rather than a broken one.
+    if (msg.username) row.dataset.username = msg.username;
+    if (msg.sender_id != null) row.dataset.senderId = String(msg.sender_id);
     if (mentionsMe(content)) row.classList.add('mentions-me');
 
     if (msg.reply_to) row.appendChild(renderReply(msg.reply_to));
@@ -1396,13 +1465,21 @@
     tag.className = 'deleted-tag';
     row.appendChild(tag);
 
-    // Only where it can actually work, so ordinary viewers carry no extra
-    // node per message. CSS reveals it on hover.
-    if (modEnabled()) row.appendChild(deleteButton());
+    // Only where they can actually work, so ordinary viewers carry no extra
+    // nodes per message. CSS reveals them on hover.
+    if (replyAvailable && canReplyTo(row)) row.appendChild(replyButton());
+    if (modEnabled()) {
+      // Pinning hands Kick the message back whole, so what Kick sent has to
+      // be kept, not just the few fields the row carries. Only while the
+      // controls are on, and only for as long as the row lives.
+      if (msg.raw) rememberForPin(row, msg.raw);
+      row.appendChild(pinButton());
+      row.appendChild(deleteButton());
+    }
 
     // This row now stands for the key, so a later repeat counts onto it.
-    // Registered whatever the mode is, so switching to counting mid-stream
-    // works on the messages already there.
+    // Registered even with counting off, so turning it on mid-stream works on
+    // the messages already there.
     if (repeatKey) repeatRows.set(repeatKey, row);
 
     appendRow(row);
@@ -1717,7 +1794,7 @@
   });
 
   // ---------------------------------------------------------------------
-  // Moderation (only inside the BetterChat extension)
+  // Moderation (only inside the KickPlus extension)
   //
   // This page cannot moderate anything by itself: it is on another origin
   // from kick.com, so it has no session to act with, and that is the property
@@ -1739,6 +1816,7 @@
   const MOD_TIMEOUT_MS = 10000;
   const modPending = new Map();
   let modAvailable = false;
+  let replyAvailable = false;
   let modRequests = 0;
 
   function askParent(payload) {
@@ -1757,6 +1835,18 @@
     if (e.origin !== MOD_PARENT_ORIGIN || e.source !== window.parent) return;
     const msg = e.data;
     if (!msg || msg.channel !== MOD_CHANNEL || typeof msg.id !== 'string') return;
+    // The extension also speaks without being asked: a reply can be dropped
+    // or fail long after the request that armed it was answered. Those carry
+    // their type as the id, so they are handled before the lookup below -
+    // nothing is waiting on them.
+    if (msg.type === 'reply-state') {
+      showReplyArmed(msg.state);
+      return;
+    }
+    if (msg.type === 'reply-failed') {
+      replyFailed(msg);
+      return;
+    }
     const resolve = modPending.get(msg.id);
     if (!resolve) return;
     modPending.delete(msg.id);
@@ -1770,23 +1860,27 @@
     return modAvailable && settings.modTools;
   }
 
+  // Only the body classes. Backfilling the buttons onto rows already drawn is
+  // restyleRows' job, so that stays one walk of the list rather than two.
   function applyModerationState() {
     document.body.classList.toggle('mod-capable', modAvailable);
     document.body.classList.toggle('can-moderate', modEnabled());
-    if (!modEnabled()) return;
-    // A row builds its delete button only when the controls are already on, so
-    // this catches everything drawn before the handshake landed or before the
-    // setting was switched back on.
-    for (const row of messagesEl.querySelectorAll('.msg[data-id]')) {
-      if (!row.querySelector('.mod-delete')) row.appendChild(deleteButton());
-    }
+    document.body.classList.toggle('can-reply', replyAvailable);
   }
 
   async function initModeration() {
     if (overlayMode || window.parent === window) return;
     const reply = await askParent({ type: 'hello' });
     modAvailable = !!(reply && reply.available);
+    // Replying is a separate permission from moderating: anyone signed in can
+    // reply, and it needs a message box on the Kick page to type into, which
+    // the extension answers for. An older extension says nothing here, so it
+    // gets no reply button rather than a broken one.
+    replyAvailable = !!(reply && reply.canReply);
     applyModerationState();
+    // The handshake can land after the first messages are on screen.
+    restyleRows();
+    if (reply && reply.reply) showReplyArmed(reply.reply);
   }
 
   // Success needs no announcement: Kick broadcasts the ban or the deletion,
@@ -1883,6 +1977,245 @@
     return btn;
   }
 
+  // ---------------------------------------------------------------------
+  // Pinning
+  //
+  // Kick's pin call takes the whole message back - sender, badges and all -
+  // and hands that to every viewer as the banner. So what is sent has to be
+  // the message as Kick gave it, not the few fields a row carries: a message
+  // pinned with its badges thinned out would show everyone the thin version.
+  //
+  // The messages are held against their rows in a WeakMap, so trimming the
+  // list is what frees them; nothing here has to be pruned.
+  // ---------------------------------------------------------------------
+
+  const pinnable = new WeakMap(); // row -> the message Kick sent
+
+  function rememberForPin(row, msg) {
+    pinnable.set(row, msg);
+  }
+
+  // Kick's own default, in minutes (20 hours). Its menu offers others; one
+  // button matching the default is what a moderator gets by clicking pin.
+  const PIN_DURATION_MIN = 1200;
+
+  const PIN_PATH =
+    'M10 2.5a.83.83 0 0 0-.83.83v5h-2.5a.83.83 0 0 0 0 1.67h2.5v6.67a.83.83 0 0 0 1.66 0V10h2.5a.83.83 0 0 0 0-1.67h-2.5v-5A.83.83 0 0 0 10 2.5';
+
+  function pinButton() {
+    const btn = el('button', 'mod-pin');
+    btn.type = 'button';
+    btn.title = 'Pin this message';
+    btn.setAttribute('aria-label', 'Pin this message');
+    btn.appendChild(icon([PIN_PATH]));
+    return btn;
+  }
+
+  messagesEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.mod-pin');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const row = btn.closest('.msg');
+    const raw = row && pinnable.get(row);
+    if (!raw) return;
+    btn.disabled = true;
+    moderate({ action: 'pin', message: raw, duration: PIN_DURATION_MIN }, 'pin that message').then(
+      (ok) => {
+        if (!ok) btn.disabled = false;
+      }
+    );
+  });
+
+  // ---------------------------------------------------------------------
+  // Replying (only inside the KickPlus extension)
+  //
+  // This page has no message box - it cannot send anything, for the same
+  // reason it cannot moderate. Kick's own box is still there below the chat,
+  // and that is what the viewer types in. So replying is split: the button
+  // here says which message, and the extension makes the next message typed
+  // into Kick's box a reply to it.
+  //
+  // Kick's own reply state lives in the message list this extension replaced,
+  // so Kick's box knows nothing about any of this; the extension carries it
+  // across and sends the reply itself.
+  // ---------------------------------------------------------------------
+
+  // Kick's own icons, so the bar reads as the same control its chat has. Both
+  // are drawn rather than fetched: two paths weigh less than a request, and
+  // they inherit the colour of whatever they sit in.
+  const REPLY_ARROW_PATH =
+    'M13.33 7.5H4.51l1.07-1.07a.83.83 0 1 0-1.17-1.18l-2.5 2.5a.83.83 0 0 0 0 1.18l2.5 2.5q.26.24.59.24t.6-.24a.83.83 0 0 0 0-1.18L4.51 9.18h8.82a2.5 2.5 0 0 1 2.5 2.5V15a.84.84 0 0 0 1.67 0v-3.33c0-2.3-1.87-4.17-4.17-4.17';
+  const CROSS_PATHS = [
+    'M15.83 16.67a1 1 0 0 1-.59-.25L3.58 4.77a.83.83 0 1 1 1.17-1.18l11.67 11.67a.83.83 0 0 1-.6 1.42z',
+    'M4.17 16.67a.83.83 0 0 1-.6-1.42L15.25 3.58a.83.83 0 1 1 1.18 1.18L4.75 16.43a.8.8 0 0 1-.6.24z',
+  ];
+
+  function icon(paths, className) {
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 20 20');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('aria-hidden', 'true');
+    if (className) svg.setAttribute('class', className);
+    for (const d of paths) {
+      const path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('fill', 'currentColor');
+      path.setAttribute('d', d);
+      svg.appendChild(path);
+    }
+    return svg;
+  }
+
+  function replyButton() {
+    const btn = el('button', 'msg-reply');
+    btn.type = 'button';
+    btn.title = 'Reply to this message';
+    btn.setAttribute('aria-label', 'Reply to this message');
+    btn.appendChild(icon([REPLY_ARROW_PATH]));
+    return btn;
+  }
+
+  // A row can only be replied to if it carries everything Kick's send call
+  // needs. Rows drawn before the sender id was kept, and anything Kick sent
+  // without one, simply get no button.
+  function canReplyTo(row) {
+    return !!(row && row.dataset.id && row.dataset.username && row.dataset.senderId);
+  }
+
+  messagesEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.msg-reply');
+    if (!btn) return;
+    e.preventDefault();
+    // The username-click handler is on this same element, so without this a
+    // reply would also open the user card.
+    e.stopPropagation();
+    const row = btn.closest('.msg');
+    if (!canReplyTo(row)) return;
+    armReply(row);
+  });
+
+  async function armReply(row) {
+    if (!replyAvailable) return;
+    const reply = await askParent({
+      type: 'reply',
+      message: {
+        id: row.dataset.id,
+        // What Kick echoes back on the reply, so it is the displayed text
+        // rather than anything this page has collapsed or filtered.
+        content: row.dataset.text || '',
+        sender: { id: Number(row.dataset.senderId), username: row.dataset.username },
+      },
+    });
+    if (reply && reply.ok) return;
+    systemLine(
+      `could not reply: ${(reply && reply.error) || 'the extension did not answer'}`,
+      true
+    );
+  }
+
+  function cancelReply() {
+    // The bar goes at once rather than waiting for the answer. The extension
+    // pushes reply-state when it disarms, so this only makes it immediate;
+    // if the message never arrives, that push is what puts it right.
+    showReplyArmed({ armed: false });
+    askParent({ type: 'reply-cancel' });
+  }
+
+  // The bar along the bottom saying what the next message will reply to.
+  // Drawn from what the extension says is armed, never from the click, so it
+  // cannot claim a reply the extension has already dropped - on a channel
+  // switch, or once the message has gone out.
+  //
+  // It shows the message itself rather than a line of grey text: the same
+  // name colour, badges and emotes it has in the chat above, so what is being
+  // replied to is recognised at a glance instead of read.
+  function showReplyArmed(state) {
+    const armed = !!(state && state.armed);
+    // Disarming what is already off changes nothing, and the extension says
+    // so on every channel switch, so this keeps it from walking the list.
+    if (!armed && replyBarEl.hidden) return;
+
+    // The bar pads the foot of the list, so this puts the view back the way
+    // the pin banner does: on the bottom when following, on the same row
+    // otherwise.
+    keepingView(() => {
+      document.body.classList.toggle('replying', armed);
+      if (!armed) {
+        replyBarEl.hidden = true;
+        replyBarEl.replaceChildren();
+        return;
+      }
+
+      const name = state.username || '?';
+      const head = el('div', 'rb-head');
+      head.append(icon([REPLY_ARROW_PATH], 'rb-icon'), el('span', 'rb-title', `Replying to ${name}:`));
+
+      const cancel = el('button', 'rb-cancel');
+      cancel.type = 'button';
+      cancel.title = 'Cancel this reply (Escape)';
+      cancel.setAttribute('aria-label', 'Cancel this reply');
+      cancel.appendChild(icon(CROSS_PATHS));
+      cancel.addEventListener('click', cancelReply);
+
+      const body = el('div', 'rb-body');
+      body.append(head, replyPreview(state));
+      replyBarEl.replaceChildren(body, cancel);
+      replyBarEl.hidden = false;
+    });
+  }
+
+  // The armed message, drawn the way the chat draws it. The row this came
+  // from may already have been trimmed out of history, so it is rebuilt from
+  // what the extension reported rather than looked up.
+  function replyPreview(state) {
+    const preview = el('div', 'rb-msg');
+
+    const row = messagesEl.querySelector(`.msg[data-id="${cssEscape(state.messageId || '')}"]`);
+    // The badges and the name colour are only on the row. Without it - trimmed
+    // away, or armed before this tab opened - the name still carries, in the
+    // colour every other message from them has.
+    if (row) {
+      const badges = row.querySelector('.badges');
+      if (badges) preview.appendChild(badges.cloneNode(true));
+    }
+
+    const user = el('span', 'user', state.username || '?');
+    const known = row && row.querySelector(':scope > .user');
+    user.style.color = known ? known.style.color : usernameColor(null);
+    preview.append(user, el('span', 'sep', ': '));
+
+    const body = el('span', 'content');
+    appendMessageContent(body, state.content || '');
+    preview.appendChild(body);
+    return preview;
+  }
+
+  // Message ids are uuids, so this only ever guards against a malformed one
+  // reaching a selector.
+  function cssEscape(value) {
+    if (window.CSS && CSS.escape) return CSS.escape(value);
+    return String(value).replace(/[^\w-]/g, '');
+  }
+
+  // Kick refused the send. The message is no longer in Kick's box - it was
+  // cleared as it was sent, the way Kick clears it - so the text comes back
+  // here with the reason, rather than being lost.
+  function replyFailed(msg) {
+    showReplyArmed({ armed: false });
+    const reason = msg.error || 'Kick refused it';
+    const text = msg.content ? `: ${msg.content}` : '';
+    systemLine(`reply not sent (${reason})${text}`, true);
+  }
+
+  // Escape cancels the reply, but only once the settings panel and the user
+  // card have had it: those are on top of the page, and closing what is in
+  // front is what Escape is expected to do first.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || replyBarEl.hidden) return;
+    if (!overlay.hidden || !userCardEl.hidden) return;
+    cancelReply();
+  });
+
   function markDeleted(row, reason) {
     const mode = settings.deletedMessages;
     if (mode === 'keep') return;
@@ -1943,6 +2276,16 @@
   const pinnedEl = document.getElementById('pinned');
   const pinContent = document.getElementById('pinContent');
   const showPinBtn = document.getElementById('showPin');
+
+  // The list's top padding follows the banner's real height, so a pin that
+  // runs to several lines never sits over the first messages.
+  if (typeof ResizeObserver === 'function') {
+    new ResizeObserver(() => {
+      keepingView(() => {
+        document.documentElement.style.setProperty('--pin-height', `${pinnedEl.offsetHeight}px`);
+      });
+    }).observe(pinnedEl);
+  }
   let pinnedActive = false;
   // Collapsed rather than dismissed: the pin is still live and can be brought
   // back. Set afresh by each new pin, either open or collapsed depending on
@@ -1950,6 +2293,7 @@
   // they have not seen.
   let pinHidden = false;
   let pinTimer = null;
+  const unpinBtn = document.getElementById('unpinMsg');
 
   function showPin(ev) {
     const msg = ev.message || {};
@@ -1967,6 +2311,8 @@
     // Each new pin starts in the state the viewer asked for: open, or
     // collapsed to the pin button under the gear.
     pinHidden = settings.collapsePinned;
+    // A new pin is a new thing to unpin, whatever became of the last one.
+    unpinBtn.disabled = false;
     clearTimeout(pinTimer);
     // Expiry is an absolute timestamp from the server (Kick's pins default
     // to 20 hours). Cap the timer: browsers clamp very long timeouts.
@@ -1994,6 +2340,16 @@
   document.getElementById('closePin').addEventListener('click', () => {
     pinHidden = true;
     applyPinVisibility();
+  });
+
+  // Unpinning takes the banner off the channel, not just this tab. Nothing is
+  // cleared here on success: Kick broadcasts the removal and clearPin runs
+  // from that, the same as it would for a pin someone else took down.
+  unpinBtn.addEventListener('click', () => {
+    unpinBtn.disabled = true;
+    moderate({ action: 'unpin' }, 'unpin that message').then((ok) => {
+      if (!ok) unpinBtn.disabled = false;
+    });
   });
 
   showPinBtn.addEventListener('click', () => {
@@ -2065,6 +2421,7 @@
     statusPill.textContent = text;
     statusPill.className = cls;
     statusPill.hidden = !text;
+    updateJumpPill(); // the two pills share the bottom centre
   }
 
   function onStreamLive(ev) {
@@ -2099,7 +2456,8 @@
     // Deletions and bans look rows up in the DOM, so anything still queued
     // for this frame has to land first or it would be missed.
     flushRows();
-    handler(ev);
+    // A deletion above the view must not move what the viewer is reading.
+    keepingView(() => handler(ev));
   }
 
   // ---------------------------------------------------------------------
@@ -2337,9 +2695,11 @@
     'serviceWorker' in navigator &&
     (location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname))
   ) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js').catch(() => {});
-    });
+    const register = () => navigator.serviceWorker.register('/sw.js').catch(() => {});
+    // This code runs once defaults.json is in, which can be after the load
+    // event has already fired.
+    if (document.readyState === 'complete') register();
+    else window.addEventListener('load', register);
   }
 
   document.body.classList.toggle('overlay', overlayMode);
@@ -2347,4 +2707,13 @@
   initModeration();
   if (slug) watch(slug);
   else showHint();
-})();
+}, function (err) {
+  // Without defaults.json there are no settings to start from. Say so on the
+  // page, where whoever just edited that file is looking, and not only in the
+  // console.
+  console.error(err);
+  const line = document.createElement('div');
+  line.className = 'system error';
+  line.textContent = `BetterChat could not start: ${(err && err.message) || err}`;
+  document.getElementById('messages').appendChild(line);
+});
