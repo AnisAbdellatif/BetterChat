@@ -248,6 +248,87 @@
   .mod-delete:hover { color: #ff6b6b; }
   .mod-delete:disabled { opacity: 0.4; cursor: default; }
 
+  /* Replying. Also extension-only, but a separate permission: anyone signed
+     in can reply, where moderating needs the badge for it. So it has a body
+     class of its own, and either button can appear without the other. */
+  body.can-reply .msg { position: relative; }
+  .msg-reply {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.6);
+    color: #adadb8;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  /* Beside the delete button where both are drawn, in its place where it is
+     not, so a viewer who cannot moderate gets no gap. */
+  body.can-moderate .msg-reply { right: 28px; }
+  body.can-reply .msg:hover .msg-reply { display: flex; }
+  .msg-reply:hover { color: #53fc18; }
+
+  /* The bar saying what the next message will reply to. At the bottom: it
+     belongs with Kick's message box, which is just below this frame. */
+  #replyBar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 6;
+    box-sizing: border-box;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 5px 8px 6px 10px;
+    background: #1b2126;
+    border-top: 1px solid #2f3a41;
+    border-left: 3px solid #53fc18;
+    font-size: var(--chat-font-size);
+    font-family: var(--chat-font-family);
+    line-height: 1.4;
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.4);
+  }
+  #replyBar[hidden] { display: none; }
+  #replyBar .arrow { flex: 0 0 auto; color: #53fc18; }
+  #replyBar .user { font-weight: 700; }
+  /* The original can be any length; one line of it is enough to know which
+     message it was. */
+  #replyBar .rb-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    color: #adadb8;
+  }
+  #replyBar .rb-cancel {
+    flex: 0 0 auto;
+    align-self: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    color: #adadb8;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  #replyBar .rb-cancel:hover { color: #ff6b6b; }
+  /* The bar covers the foot of the list, so the last message clears it. */
+  body.replying #messages { padding-bottom: 40px; }
+  body.replying #jumpLatest { bottom: 44px; }
+
   .uc-mod {
     display: flex;
     flex-wrap: wrap;
@@ -513,6 +594,11 @@
     gap: 6px;
   }
   body.overlay #corner { display: none; }
+  /* An overlay is on a stream, not beside Kick's message box: nothing there
+     can send a reply. initModeration bails in overlay mode so neither should
+     ever appear, but these keep a stray one off a broadcast. */
+  body.overlay .msg-reply, body.overlay #replyBar { display: none; }
+  body.overlay.replying #messages { padding-bottom: 10px; }
   .corner-btn {
     width: 30px;
     height: 30px;
@@ -783,6 +869,10 @@
   <div id="statusPill" hidden role="status" aria-live="polite"></div>
 
   <button id="jumpLatest" type="button" hidden aria-live="polite"></button>
+
+  <!-- What the next message typed into Kick's box will reply to. Only ever
+       shown inside the KickPlus extension, which is what sends it. -->
+  <div id="replyBar" hidden role="status" aria-live="polite"></div>
 
   <!-- Asked once, on the first visit. Until it is answered nothing is sent. -->
   <div id="consent" hidden role="dialog" aria-labelledby="consentTitle" aria-describedby="consentText">

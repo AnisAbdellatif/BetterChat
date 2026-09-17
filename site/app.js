@@ -5,6 +5,7 @@ BetterChatSettings.ready.then(function () {
   'use strict';
 
   const messagesEl = document.getElementById('messages');
+  const replyBarEl = document.getElementById('replyBar');
   const SVG_NS = 'http://www.w3.org/2000/svg';
 
   const query = new URLSearchParams(location.search);
@@ -130,6 +131,7 @@ BetterChatSettings.ready.then(function () {
   // every input event while a colour is being dragged.
   function restyleRows() {
     const withTools = modEnabled();
+    const withReply = replyAvailable;
     for (const row of messagesEl.querySelectorAll('.msg')) {
       const user = row.querySelector(':scope > .user');
       if (user) user.style.color = usernameColor(user.dataset.kickColor);
@@ -147,7 +149,10 @@ BetterChatSettings.ready.then(function () {
         row.classList.toggle('mentions-me', mentionsMe(row.dataset.text));
       }
 
-      // Rows drawn before moderation was known to work have no button yet.
+      // Rows drawn before the handshake landed have no buttons yet.
+      if (withReply && canReplyTo(row) && !row.querySelector('.msg-reply')) {
+        row.appendChild(replyButton());
+      }
       if (withTools && row.dataset.id && !row.querySelector('.mod-delete')) {
         row.appendChild(deleteButton());
       }
@@ -1346,6 +1351,12 @@ BetterChatSettings.ready.then(function () {
     row.dataset.id = msg.id;
     row.dataset.user = (msg.username || '').toLowerCase();
     row.dataset.text = content;
+    // Replying needs the sender exactly as Kick spells them, where data-user
+    // is lowercased for matching, and their numeric id. Both are only set
+    // when there is something to set: the reply button reads them, so a row
+    // without them offers no button rather than a broken one.
+    if (msg.username) row.dataset.username = msg.username;
+    if (msg.sender_id != null) row.dataset.senderId = String(msg.sender_id);
     if (mentionsMe(content)) row.classList.add('mentions-me');
 
     if (msg.reply_to) row.appendChild(renderReply(msg.reply_to));
@@ -1381,8 +1392,9 @@ BetterChatSettings.ready.then(function () {
     tag.className = 'deleted-tag';
     row.appendChild(tag);
 
-    // Only where it can actually work, so ordinary viewers carry no extra
-    // node per message. CSS reveals it on hover.
+    // Only where they can actually work, so ordinary viewers carry no extra
+    // nodes per message. CSS reveals them on hover.
+    if (replyAvailable && canReplyTo(row)) row.appendChild(replyButton());
     if (modEnabled()) row.appendChild(deleteButton());
 
     // This row now stands for the key, so a later repeat counts onto it.
@@ -1724,6 +1736,7 @@ BetterChatSettings.ready.then(function () {
   const MOD_TIMEOUT_MS = 10000;
   const modPending = new Map();
   let modAvailable = false;
+  let replyAvailable = false;
   let modRequests = 0;
 
   function askParent(payload) {
@@ -1742,6 +1755,18 @@ BetterChatSettings.ready.then(function () {
     if (e.origin !== MOD_PARENT_ORIGIN || e.source !== window.parent) return;
     const msg = e.data;
     if (!msg || msg.channel !== MOD_CHANNEL || typeof msg.id !== 'string') return;
+    // The extension also speaks without being asked: a reply can be dropped
+    // or fail long after the request that armed it was answered. Those carry
+    // their type as the id, so they are handled before the lookup below -
+    // nothing is waiting on them.
+    if (msg.type === 'reply-state') {
+      showReplyArmed(msg.state);
+      return;
+    }
+    if (msg.type === 'reply-failed') {
+      replyFailed(msg);
+      return;
+    }
     const resolve = modPending.get(msg.id);
     if (!resolve) return;
     modPending.delete(msg.id);
@@ -1760,15 +1785,22 @@ BetterChatSettings.ready.then(function () {
   function applyModerationState() {
     document.body.classList.toggle('mod-capable', modAvailable);
     document.body.classList.toggle('can-moderate', modEnabled());
+    document.body.classList.toggle('can-reply', replyAvailable);
   }
 
   async function initModeration() {
     if (overlayMode || window.parent === window) return;
     const reply = await askParent({ type: 'hello' });
     modAvailable = !!(reply && reply.available);
+    // Replying is a separate permission from moderating: anyone signed in can
+    // reply, and it needs a message box on the Kick page to type into, which
+    // the extension answers for. An older extension says nothing here, so it
+    // gets no reply button rather than a broken one.
+    replyAvailable = !!(reply && reply.canReply);
     applyModerationState();
     // The handshake can land after the first messages are on screen.
     restyleRows();
+    if (reply && reply.reply) showReplyArmed(reply.reply);
   }
 
   // Success needs no announcement: Kick broadcasts the ban or the deletion,
@@ -1864,6 +1896,126 @@ BetterChatSettings.ready.then(function () {
     btn.setAttribute('aria-label', 'Delete this message');
     return btn;
   }
+
+  // ---------------------------------------------------------------------
+  // Replying (only inside the KickPlus extension)
+  //
+  // This page has no message box - it cannot send anything, for the same
+  // reason it cannot moderate. Kick's own box is still there below the chat,
+  // and that is what the viewer types in. So replying is split: the button
+  // here says which message, and the extension makes the next message typed
+  // into Kick's box a reply to it.
+  //
+  // Kick's own reply state lives in the message list this extension replaced,
+  // so Kick's box knows nothing about any of this; the extension carries it
+  // across and sends the reply itself.
+  // ---------------------------------------------------------------------
+
+  function replyButton() {
+    const btn = el('button', 'msg-reply', '↩');
+    btn.type = 'button';
+    btn.title = 'Reply to this message';
+    btn.setAttribute('aria-label', 'Reply to this message');
+    return btn;
+  }
+
+  // A row can only be replied to if it carries everything Kick's send call
+  // needs. Rows drawn before the sender id was kept, and anything Kick sent
+  // without one, simply get no button.
+  function canReplyTo(row) {
+    return !!(row && row.dataset.id && row.dataset.username && row.dataset.senderId);
+  }
+
+  messagesEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.msg-reply');
+    if (!btn) return;
+    e.preventDefault();
+    // The username-click handler is on this same element, so without this a
+    // reply would also open the user card.
+    e.stopPropagation();
+    const row = btn.closest('.msg');
+    if (!canReplyTo(row)) return;
+    armReply(row);
+  });
+
+  async function armReply(row) {
+    if (!replyAvailable) return;
+    const reply = await askParent({
+      type: 'reply',
+      message: {
+        id: row.dataset.id,
+        // What Kick echoes back on the reply, so it is the displayed text
+        // rather than anything this page has collapsed or filtered.
+        content: row.dataset.text || '',
+        sender: { id: Number(row.dataset.senderId), username: row.dataset.username },
+      },
+    });
+    if (reply && reply.ok) return;
+    systemLine(
+      `could not reply: ${(reply && reply.error) || 'the extension did not answer'}`,
+      true
+    );
+  }
+
+  function cancelReply() {
+    // The bar goes at once rather than waiting for the answer. The extension
+    // pushes reply-state when it disarms, so this only makes it immediate;
+    // if the message never arrives, that push is what puts it right.
+    showReplyArmed({ armed: false });
+    askParent({ type: 'reply-cancel' });
+  }
+
+  // The bar along the bottom saying what the next message will reply to.
+  // Drawn from what the extension says is armed, never from the click, so it
+  // cannot claim a reply the extension has already dropped - on a channel
+  // switch, or once the message has gone out.
+  function showReplyArmed(state) {
+    const armed = !!(state && state.armed);
+    // Disarming what is already off changes nothing, and the extension says
+    // so on every channel switch, so this keeps it from walking the list.
+    if (!armed && replyBarEl.hidden) return;
+
+    // The bar pads the foot of the list, so this puts the view back the way
+    // the pin banner does: on the bottom when following, on the same row
+    // otherwise.
+    keepingView(() => {
+      document.body.classList.toggle('replying', armed);
+      if (!armed) {
+        replyBarEl.hidden = true;
+        replyBarEl.replaceChildren();
+        return;
+      }
+      const who = el('span', 'user', `@${state.username || '?'}`);
+      const text = el('span', 'rb-text', state.content || '');
+      const cancel = el('button', 'rb-cancel', '×');
+      cancel.type = 'button';
+      cancel.title = 'Cancel this reply (Escape)';
+      cancel.setAttribute('aria-label', 'Cancel this reply');
+      cancel.addEventListener('click', cancelReply);
+
+      replyBarEl.replaceChildren(el('span', 'arrow', '↩'), 'Replying to ', who, ': ', text, cancel);
+      replyBarEl.hidden = false;
+    });
+  }
+
+  // Kick refused the send. The message is no longer in Kick's box - it was
+  // cleared as it was sent, the way Kick clears it - so the text comes back
+  // here with the reason, rather than being lost.
+  function replyFailed(msg) {
+    showReplyArmed({ armed: false });
+    const reason = msg.error || 'Kick refused it';
+    const text = msg.content ? `: ${msg.content}` : '';
+    systemLine(`reply not sent (${reason})${text}`, true);
+  }
+
+  // Escape cancels the reply, but only once the settings panel and the user
+  // card have had it: those are on top of the page, and closing what is in
+  // front is what Escape is expected to do first.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || replyBarEl.hidden) return;
+    if (!overlay.hidden || !userCardEl.hidden) return;
+    cancelReply();
+  });
 
   function markDeleted(row, reason) {
     const mode = settings.deletedMessages;

@@ -46,6 +46,7 @@ test('normalizeMessage: reply metadata, badges, deselected v2 badge dropped', ()
   assert.deepEqual(m.reply_to, {
     id: 'dd4156fd-3d5b-464d-9b72-15642fb9394b',
     username: 'Kreygasmo',
+    sender_id: 20631072,
     content: 'are they supposed to remember',
   });
   assert.deepEqual(m.badges, [{ type: 'subscriber', text: 'Subscriber', count: 39, sort_order: 9 }]);
@@ -62,6 +63,18 @@ test('normalizeMessage: malformed payloads are null, not crashes', () => {
   assert.equal(bare.type, 'message');
   assert.equal(bare.reply_to, null);
   assert.deepEqual(bare.badges, []);
+  // No sender id from Kick is null rather than absent or a guess: replying
+  // needs a real one, and this is what tells the button not to offer itself.
+  assert.equal(bare.sender_id, null);
+});
+
+// Sending a reply needs the parent's sender id, so losing it here would break
+// replying while every other field still looked right.
+test('normalizeMessage: the sender id is kept', () => {
+  assert.equal(normalizeMessage(reply).sender_id, 105312993);
+  // Kick is inconsistent about numbers-as-strings.
+  assert.equal(normalizeMessage({ id: 1, sender: { id: '42', username: 'a' }, content: 'hi' }).sender_id, 42);
+  assert.equal(normalizeMessage({ id: 1, sender: { id: 'nope', username: 'a' }, content: 'hi' }).sender_id, null);
 });
 
 test('normalizeEvent: timeout and permanent ban', () => {

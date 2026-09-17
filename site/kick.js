@@ -75,9 +75,14 @@
   function parseReply(metadata) {
     const original = metadata && metadata.original_message;
     if (!original || typeof original !== 'object') return null;
+    const sender = metadata.original_sender || {};
     return {
       id: original.id != null ? String(original.id) : null,
-      username: (metadata.original_sender && str(metadata.original_sender.username)) || null,
+      username: str(sender.username),
+      // Kept for the same reason as sender_id below: replying to a message
+      // needs the parent's sender id, and a reply line is a message someone
+      // may well want to reply to in turn.
+      sender_id: integer(sender.id),
       content: str(original.content),
     };
   }
@@ -91,6 +96,11 @@
     return {
       id: String(data.id),
       username: sender.username,
+      // Replying needs it: Kick's send call carries the parent's sender id as
+      // well as their name, and this is the only place it comes past. Null
+      // where Kick did not send one, which is what stops a reply being armed
+      // on a message it could not be sent for.
+      sender_id: integer(sender.id),
       content: data.content,
       created_at: str(data.created_at),
       color: str(identity.color),

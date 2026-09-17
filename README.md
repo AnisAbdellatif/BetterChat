@@ -73,6 +73,18 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
   controls appear. Nothing is announced on success: Kick broadcasts the ban
   or deletion and the chat already draws it. A refusal from Kick is shown as
   a line, and a 403 hides the controls for the rest of the session.
+- **Replying, inside the KickPlus extension only.** Hovering a message also
+  gives a reply button, and a bar along the bottom then says what the next
+  message will reply to, with Escape or its own button to cancel. This page
+  has no message box: Kick's is still there below the frame, and that is what
+  the viewer types in. So the button only says *which* message, and the
+  extension makes the next message typed into Kick's box a reply to it.
+  It is a separate permission from moderating - anyone signed in can reply -
+  so the two buttons appear independently of each other. The bar is drawn from
+  what the extension reports rather than from the click, so it cannot claim a
+  reply that has already gone out or been dropped on a channel switch. If Kick
+  refuses the send, the text comes back with the reason and is shown as a
+  line, since Kick's box has already been cleared by then.
 - Status pill when the connection to Kick is down or reconnecting, when the
   chat subscription is pending, or when the channel is offline (live /
   offline changes arrive in real time).
@@ -135,7 +147,9 @@ per-channel table. HTTP Basic Auth; a 404 until credentials are set.
     ping/pong keepalive from Kick's `activity_timeout` and reconnect with
     exponential backoff.
   - `normalizeMessage` / `normalizeEvent`: Kick's raw payloads into the
-    shapes `app.js` renders.
+    shapes `app.js` renders. `normalizeMessage` keeps `sender_id` because a
+    reply has to name the parent's sender to Kick, and this is the only place
+    it comes past.
 - `site/settings.js` - the settings model, and the only part of the frontend
   with no DOM in it: which settings exist, what each may hold (`sanitize`),
   and how they survive a round trip through the URL. Split out so it can be
@@ -244,6 +258,37 @@ Two things the embedding side owns:
 
 Per-viewer settings are stored per-origin, so an embed keeps its own
 `localStorage` and does not inherit settings from a direct visit.
+
+### The bridge to the extension
+
+Moderating and replying both need a Kick session, which this page does not
+have and will not get. They go over `postMessage` to the framing page
+instead, which on kick.com is the extension's content script. Every message
+carries `channel: 'bck-mod'` and an `id`, and both sides check the other's
+origin: this page will only talk to `https://kick.com`, and the extension
+only to the BetterChat origin it loaded.
+
+Requests from this page, each answered with the same `id`:
+
+| Type | Answer |
+| ---- | ------ |
+| `hello` | `available` (a signed-in Kick tab, so moderating is possible), `canReply` (the page has a message box to type in), and any reply already armed |
+| `action` | a moderation action - `delete`, `timeout`, `ban`, `unban` - answered `ok` or with an `error` and Kick's `status` |
+| `reply` + `message: { id, content, sender: { id, username } }` | arms a reply: the next message typed into Kick's box is sent as a reply to this one |
+| `reply-cancel` | disarms it |
+
+The extension also speaks unasked, with its type as the `id`, since these can
+arrive long after any request:
+
+| Type | Meaning |
+| ---- | ------- |
+| `reply-state` | what is armed now, or nothing; the bottom bar is drawn from this alone |
+| `reply-failed` | Kick refused the send, with the reason and the text back, Kick's box having been cleared already |
+
+A request with no answer times out after ten seconds and is treated as a
+refusal, so an older extension that does not know a message type leaves the
+feature off rather than hanging. `canReply` is what keeps the reply button
+away from an extension too old to send one.
 
 ## Publishing (homelab + Cloudflare Tunnel)
 
