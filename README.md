@@ -63,7 +63,7 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
   the user a reply is aimed at, the pinned message's author, and the names in
   moderation and event lines (both the user banned and the moderator who
   banned them).
-- **Moderating, inside the extension only.** Hovering a message gives a
+- **Moderating, inside the KickPlus extension only.** Hovering a message gives a
   delete button, and a user card gains timeout (1m / 5m / 15m / 1h / 1d) and
   ban, or unban for anyone currently banned or timed out. This page has no
   Kick session of its own and never will - that

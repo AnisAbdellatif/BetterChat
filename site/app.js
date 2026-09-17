@@ -1702,7 +1702,7 @@ BetterChatSettings.ready.then(function () {
   });
 
   // ---------------------------------------------------------------------
-  // Moderation (only inside the BetterChat extension)
+  // Moderation (only inside the KickPlus extension)
   //
   // This page cannot moderate anything by itself: it is on another origin
   // from kick.com, so it has no session to act with, and that is the property
