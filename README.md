@@ -115,6 +115,8 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
   settings link, export / import settings as JSON, reset, and the switch for
   the anonymous viewer count (the same answer the first-visit banner asks
   for).
+- About: which build this tab is running, and whether the server has a newer
+  one. Nothing here is a setting - it is what makes a bug report nameable.
 
 **Settings in the URL.** Any setting can be a query parameter
 (`/xqc?fontSize=16&monocolor=1&hiddenBadges=level,event`). URL settings
@@ -204,6 +206,14 @@ image it is worked out once. On install the worker fetches its files past the
 HTTP cache (`cache: 'reload'`), so a build's cache holds that build's files.
 Served from a plain static host instead, the placeholder stays as written and
 the worker simply never retires its cache on its own.
+
+That hash is the only thing identifying a build, so the settings panel's
+**About** tab shows it: the one this tab is running, read from the cache the
+worker filled, and `/api/build` for what the server is serving now. When they
+differ the tab is a deploy behind and says so, which is the difference between
+a bug report naming a build and one that cannot. `/api/build` is under `/api/`
+so the worker never caches it - cached, it would report the build it was
+cached under for good.
 
 `/privacy` is deliberately left to the network. Navigations are cached under
 one fixed shell key, so caching the policy would overwrite the chat page an

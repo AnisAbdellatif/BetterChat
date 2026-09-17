@@ -3,6 +3,7 @@
     GET  /, /<channel>, ...  the chat page (site/), real files served as-is
     GET  /privacy            the privacy policy (site/privacy.html)
     GET  /sw.js              the service worker, with the site's build hash written in
+    GET  /api/build          that same hash, for the About tab to show
     POST /api/beat           heartbeat from an open chat tab
     GET  /admin              the stats board (HTTP Basic Auth)
     GET  /admin/api/stats    the JSON the board polls (HTTP Basic Auth)
@@ -252,6 +253,17 @@ def create_app(stats: Stats | None = None, sample_loop: bool = True) -> FastAPI:
         return Response(
             body, media_type="application/javascript", headers={"Cache-Control": "no-cache"}
         )
+
+    # The same hash the service worker names its cache after, for the About
+    # tab to show. "Which build am I actually looking at" is otherwise a
+    # question only the browser's cache storage can answer, and a viewer
+    # reporting something is on a build neither of us can name.
+    #
+    # Under /api/ so the worker leaves it alone: cached, it would report the
+    # build it was cached under forever, which is the one thing it must not do.
+    @app.get("/api/build")
+    async def build_id() -> JSONResponse:
+        return JSONResponse({"build": site_build()}, headers={"Cache-Control": "no-store"})
 
     # Registered before the catch-all on purpose: every unknown path is the
     # chat page, so without this /privacy would be read as a channel slug and

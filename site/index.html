@@ -851,6 +851,34 @@
   }
   .buttons button:hover { background: #2a3238; border-color: #53fc18; }
   .buttons button.danger:hover { border-color: #ff6b6b; }
+
+  /* The build hash, in the About tab. Monospace and selectable: it is meant
+     to be read out or pasted into a bug report. */
+  .build-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .build-row code {
+    flex: 0 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 4px 8px;
+    border-radius: 5px;
+    background: #0b0e0f;
+    border: 1px solid #2a3035;
+    color: #53fc18;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    user-select: all;
+  }
+  .build-row button {
+    flex: 0 0 auto;
+    background: #22282d;
+    border: 1px solid #2f3a41;
+    border-radius: 5px;
+    color: #efeff1;
+    padding: 5px 10px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .build-row button:hover { background: #2a3238; border-color: #53fc18; }
   #actionNote { color: #53fc18; font-size: 12px; margin-top: 6px; min-height: 1.2em; }
   #actionNote.error { color: #ff6b6b; }
 </style>
@@ -923,6 +951,7 @@
         <button type="button" role="tab" data-tab="filters">Filters</button>
         <button type="button" role="tab" data-tab="events">Events</button>
         <button type="button" role="tab" data-tab="share">Overlay &amp; sharing</button>
+        <button type="button" role="tab" data-tab="about">About</button>
       </div>
 
       <!-- Appearance ------------------------------------------------- -->
@@ -1153,6 +1182,34 @@
             <span><span class="label">Count this tab</span></span>
             <input type="checkbox" data-stats /><span class="switch"></span>
           </label>
+        </div>
+      </div>
+
+      <div class="tab-panel" data-tab-panel="about" role="tabpanel" hidden>
+        <div class="setting">
+          <div class="section-title">Build</div>
+          <div class="section-desc">
+            The site has no version number: every file is served under its own
+            name, so what identifies a build is a hash of all of them. This is
+            that hash, and the service worker names its cache after it. Quote it
+            in a bug report and it says exactly which copy you were looking at.
+          </div>
+          <div class="build-row">
+            <code id="buildId">checking...</code>
+            <button id="copyBuild" type="button" hidden>Copy</button>
+          </div>
+          <div id="buildNote" class="section-desc"></div>
+        </div>
+
+        <div class="setting">
+          <div class="section-title">BetterChat</div>
+          <div class="section-desc">
+            A replacement chat for <a href="https://kick.com" target="_blank" rel="noopener">kick.com</a>,
+            in the browser: messages come straight from Kick to this page.
+            Inside the KickPlus extension it also moderates and replies, using
+            your own Kick session on the kick.com side.
+            <a href="/privacy" target="_blank" rel="noopener">Privacy</a>.
+          </div>
         </div>
       </div>
     </div>

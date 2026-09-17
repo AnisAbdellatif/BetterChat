@@ -435,6 +435,10 @@ BetterChatSettings.ready.then(function () {
   function showTab(name) {
     for (const b of tabButtons) b.setAttribute('aria-selected', String(b.dataset.tab === name));
     for (const p of tabPanels) p.hidden = p.dataset.tabPanel !== name;
+    // Read when the tab is opened rather than at startup: a deploy can land
+    // while the panel is closed, and this is the one place that would then be
+    // showing something that is no longer true.
+    if (name === 'about') showBuild();
   }
 
   for (const b of tabButtons) b.addEventListener('click', () => showTab(b.dataset.tab));
@@ -504,6 +508,71 @@ BetterChatSettings.ready.then(function () {
     // Same rule: resetting the look of the chat is not a privacy decision.
     replaceSettings({ stats: settings.stats });
     note('Settings reset.');
+  });
+
+  // ---- About: which build is this ----------------------------------------
+  //
+  // There is no version number to show: nothing is bundled and no filename
+  // carries a hash, so what identifies a build is the hash of the site's
+  // files that the server computes and the service worker names its cache
+  // after. Showing it turns "it's broken on the live site" into something
+  // that names a build.
+  //
+  // Two hashes, not one. The server says what it is serving now; the cache
+  // name says what this tab is actually running, which after a deploy is the
+  // older of the two until the new worker takes over. Saying so is the point:
+  // "I'm on the latest" is the question being asked.
+
+  const buildIdEl = document.getElementById('buildId');
+  const buildNoteEl = document.getElementById('buildNote');
+  const copyBuildBtn = document.getElementById('copyBuild');
+
+  // What this tab is running, read from the cache the worker filled. Null
+  // where there is no worker at all (a fresh load, or an unsupported
+  // browser), which is not the same as being out of date.
+  async function runningBuild() {
+    if (!('caches' in window)) return null;
+    try {
+      const names = await caches.keys();
+      const mine = names.filter((n) => n.startsWith('betterchat-'));
+      // More than one only while an activate is in flight, and the worker
+      // drops the rest; with none to choose from there is nothing to report.
+      return mine.length === 1 ? mine[0].slice('betterchat-'.length) : null;
+    } catch (_e) {
+      return null;
+    }
+  }
+
+  async function showBuild() {
+    let served = null;
+    try {
+      const res = await fetch('/api/build', { cache: 'no-store' });
+      if (res.ok) served = (await res.json()).build || null;
+    } catch (_e) {
+      served = null;
+    }
+    const running = await runningBuild();
+
+    // The one this tab is actually running is the honest answer; the server's
+    // is the fallback for a tab with no worker yet.
+    const shown = running || served;
+    buildIdEl.textContent = shown || 'unknown';
+    copyBuildBtn.hidden = !shown;
+
+    if (!served && !running) {
+      // A static host with no /api/build, or offline on a first load.
+      buildNoteEl.textContent = 'This copy does not report a build.';
+    } else if (running && served && running !== served) {
+      buildNoteEl.textContent = `A newer build (${served}) is on the server. Reload twice, or close every tab, to move to it.`;
+    } else if (running) {
+      buildNoteEl.textContent = 'Up to date with the server.';
+    } else {
+      buildNoteEl.textContent = 'Serving this build now; this tab has not cached one yet.';
+    }
+  }
+
+  copyBuildBtn.addEventListener('click', async () => {
+    if (await copyText(buildIdEl.textContent)) note('Build copied.');
   });
 
   function openSettings() {

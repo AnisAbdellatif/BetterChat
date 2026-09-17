@@ -245,3 +245,24 @@ def test_service_worker_gets_the_site_build_written_in(site):
 
 def test_service_worker_is_404_without_one(client):
     assert client.get("/sw.js").status_code == 404
+
+
+def test_build_endpoint_matches_the_worker_and_moves_with_the_site(site):
+    """The About tab shows this, and the worker names its cache after it: the
+    two have to be the same string or the tab reports the wrong build."""
+    (site / "sw.js").write_text("const BUILD = '__BETTERCHAT_BUILD__';\n")
+    app = create_app(Stats(path=None), sample_loop=False)
+    with TestClient(app) as c:
+        r = c.get("/api/build")
+        assert r.status_code == 200
+        build = r.json()["build"]
+        assert re.fullmatch(r"[0-9a-f]{16}", build)
+        # Never cached: cached, it would report the build it was cached under
+        # forever, which is the one thing it must not do.
+        assert r.headers["cache-control"] == "no-store"
+        assert f"const BUILD = '{build}';" in c.get("/sw.js").text
+
+        (site / "app.js").write_text("// js, edited")
+        moved = c.get("/api/build").json()["build"]
+        assert moved != build
+        assert f"const BUILD = '{moved}';" in c.get("/sw.js").text
