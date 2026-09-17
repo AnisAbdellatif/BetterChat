@@ -269,7 +269,9 @@
     line-height: 1;
     cursor: pointer;
   }
-  .msg-reply svg { width: 15px; height: 15px; }
+  /* Bigger than the icon looks like it should be: the delete button beside it
+     is a 19px glyph, and a 15px arrow next to it read as an afterthought. */
+  .msg-reply svg { width: 19px; height: 19px; }
   /* Beside the delete button where both are drawn, in its place where it is
      not, so a viewer who cannot moderate gets no gap. */
   body.can-moderate .msg-reply { right: 28px; }
