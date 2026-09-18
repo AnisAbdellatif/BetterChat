@@ -233,14 +233,14 @@
   body.can-reply .msg { position: relative; }
   .msg-actions {
     position: absolute;
-    top: -14px;
+    top: -19px;
     right: 4px;
     z-index: 3;
     display: none;
     align-items: center;
     gap: 2px;
     padding: 2px;
-    border-radius: 7px;
+    border-radius: 6px;
     background: #1b2126;
     border: 1px solid #2f3a41;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
@@ -253,11 +253,11 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 26px;
-    height: 26px;
+    width: 22px;
+    height: 22px;
     padding: 0;
     border: none;
-    border-radius: 5px;
+    border-radius: 4px;
     background: transparent;
     color: #adadb8;
     line-height: 1;
@@ -272,18 +272,20 @@
   .msg-actions .mod-pin { order: 2; }
   .msg-actions .mod-delete { order: 3; }
 
-  .mod-delete { font-size: 19px; }
+  .mod-delete { font-size: 16px; }
   .mod-delete:hover { color: #ff6b6b; }
-  /* Upright it reads as a plus; Kick's own is tilted. */
-  .mod-pin svg { width: 19px; height: 19px; transform: rotate(45deg); }
+  /* Upright, the way a pin goes into a board. Smaller than the other two: it
+     is drawn on a 24 grid where they are on 20, so the same box would make it
+     the biggest thing in the bar. */
+  .mod-pin svg { width: 15px; height: 15px; }
   .mod-pin:hover { color: #53fc18; }
 
   /* Replying is extension-only like the rest, but a separate permission:
      anyone signed in can reply, where moderating needs the badge for it. So
      it has a body class of its own, and the bar can hold it alone. */
   /* Bigger than the icon looks like it should be: the delete button beside it
-     is a 19px glyph, and a 15px arrow next to it read as an afterthought. */
-  .msg-reply svg { width: 19px; height: 19px; }
+     is a 16px glyph, and a smaller arrow next to it read as an afterthought. */
+  .msg-reply svg { width: 16px; height: 16px; }
   .msg-reply:hover { color: #53fc18; }
 
   /* What the next message will reply to. At the bottom: it belongs with

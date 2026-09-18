@@ -2030,15 +2030,21 @@ BetterChatSettings.ready.then(function () {
   // button matching the default is what a moderator gets by clicking pin.
   const PIN_DURATION_MIN = 1200;
 
+  // A drawing-pin seen side on: head, shaft, and the point going into the
+  // board. Kick's own is a plus tilted 45 degrees, which reads as "add" as
+  // easily as "pin"; next to a reply arrow and a cross, the shape of the
+  // thing itself is what makes the button obvious without its tooltip.
+  // Drawn on a 24-wide grid, which is what it was designed on.
+  const PIN_BOX = '0 0 24 24';
   const PIN_PATH =
-    'M10 2.5a.83.83 0 0 0-.83.83v5h-2.5a.83.83 0 0 0 0 1.67h2.5v6.67a.83.83 0 0 0 1.66 0V10h2.5a.83.83 0 0 0 0-1.67h-2.5v-5A.83.83 0 0 0 10 2.5';
+    'M16 9V4h1a1 1 0 0 0 0-2H7a1 1 0 0 0 0 2h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3';
 
   function pinButton() {
     const btn = el('button', 'mod-pin');
     btn.type = 'button';
     btn.title = 'Pin this message';
     btn.setAttribute('aria-label', 'Pin this message');
-    btn.appendChild(icon([PIN_PATH]));
+    btn.appendChild(icon([PIN_PATH], null, PIN_BOX));
     return btn;
   }
 
@@ -2082,9 +2088,9 @@ BetterChatSettings.ready.then(function () {
     'M4.17 16.67a.83.83 0 0 1-.6-1.42L15.25 3.58a.83.83 0 1 1 1.18 1.18L4.75 16.43a.8.8 0 0 1-.6.24z',
   ];
 
-  function icon(paths, className) {
+  function icon(paths, className, viewBox) {
     const svg = document.createElementNS(SVG_NS, 'svg');
-    svg.setAttribute('viewBox', '0 0 20 20');
+    svg.setAttribute('viewBox', viewBox || '0 0 20 20');
     svg.setAttribute('fill', 'none');
     svg.setAttribute('aria-hidden', 'true');
     if (className) svg.setAttribute('class', className);
