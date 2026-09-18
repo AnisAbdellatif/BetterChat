@@ -130,8 +130,6 @@ BetterChatSettings.ready.then(function () {
   // of rows, and the colour picker and hex field update live, so this runs on
   // every input event while a colour is being dragged.
   function restyleRows() {
-    const withTools = modEnabled();
-    const withReply = replyAvailable;
     for (const row of messagesEl.querySelectorAll('.msg')) {
       const user = row.querySelector(':scope > .user');
       if (user) user.style.color = usernameColor(user.dataset.kickColor);
@@ -149,17 +147,9 @@ BetterChatSettings.ready.then(function () {
         row.classList.toggle('mentions-me', mentionsMe(row.dataset.text));
       }
 
-      // Rows drawn before the handshake landed have no buttons yet. Pinning
-      // is not backfilled: it needs the whole message, and a row drawn before
-      // the controls were on was not kept with one. Those rows can still be
-      // deleted and replied to, and the next message can be pinned.
-      if (withReply && canReplyTo(row) && !row.querySelector('.msg-reply')) {
-        row.appendChild(replyButton());
-      }
-      if (withTools && row.dataset.id && !row.querySelector('.mod-delete')) {
-        if (pinnable.has(row)) row.appendChild(pinButton());
-        row.appendChild(deleteButton());
-      }
+      // Rows drawn before the handshake landed, or before the controls were
+      // switched on, have no bar yet or an incomplete one.
+      fitActions(row);
     }
   }
 
@@ -1466,16 +1456,12 @@ BetterChatSettings.ready.then(function () {
     row.appendChild(tag);
 
     // Only where they can actually work, so ordinary viewers carry no extra
-    // nodes per message. CSS reveals them on hover.
-    if (replyAvailable && canReplyTo(row)) row.appendChild(replyButton());
-    if (modEnabled()) {
-      // Pinning hands Kick the message back whole, so what Kick sent has to
-      // be kept, not just the few fields the row carries. Only while the
-      // controls are on, and only for as long as the row lives.
-      if (msg.raw) rememberForPin(row, msg.raw);
-      row.appendChild(pinButton());
-      row.appendChild(deleteButton());
-    }
+    // nodes per message. CSS reveals the bar on hover.
+    // Pinning hands Kick the message back whole, so what Kick sent has to be
+    // kept, not just the few fields the row carries. Only while the controls
+    // are on, and only for as long as the row lives.
+    if (modEnabled() && msg.raw) rememberForPin(row, msg.raw);
+    fitActions(row);
 
     // This row now stands for the key, so a later repeat counts onto it.
     // Registered even with counting off, so turning it on mid-stream works on
@@ -1975,6 +1961,51 @@ BetterChatSettings.ready.then(function () {
     btn.title = 'Delete this message';
     btn.setAttribute('aria-label', 'Delete this message');
     return btn;
+  }
+
+  // ---------------------------------------------------------------------
+  // The per-message bar
+  //
+  // Reply, pin and delete live in one floating bar above the message rather
+  // than as buttons laid over it: hovering a message is how you read the
+  // thing you are about to act on, so the controls sit clear of the words.
+  //
+  // Which buttons belong there changes after a row is drawn - the extension's
+  // handshake lands late, and the moderation setting can be switched at any
+  // time - so this is written to be run again on a row it has already built.
+  // It adds what is missing, removes what no longer applies, and drops the
+  // bar entirely when nothing is left, so an ordinary viewer carries no extra
+  // node per message. CSS orders the buttons, so they need not be added in
+  // any particular order.
+  // ---------------------------------------------------------------------
+
+  function fitActions(row) {
+    const wanted = [];
+    if (replyAvailable && canReplyTo(row)) wanted.push(['msg-reply', replyButton]);
+    if (modEnabled() && row.dataset.id) {
+      // Pinning needs the whole message, and a row drawn before the controls
+      // were on was never kept with one. Those can still be replied to and
+      // deleted; the next message along is pinnable.
+      if (pinnable.has(row)) wanted.push(['mod-pin', pinButton]);
+      wanted.push(['mod-delete', deleteButton]);
+    }
+
+    let bar = row.querySelector(':scope > .msg-actions');
+    if (!wanted.length) {
+      if (bar) bar.remove();
+      return;
+    }
+    if (!bar) {
+      bar = el('div', 'msg-actions');
+      row.appendChild(bar);
+    }
+    const keep = new Set(wanted.map(([name]) => name));
+    for (const btn of [...bar.children]) {
+      if (!keep.has(btn.className)) btn.remove();
+    }
+    for (const [name, build] of wanted) {
+      if (!bar.querySelector(`:scope > .${name}`)) bar.appendChild(build());
+    }
   }
 
   // ---------------------------------------------------------------------
