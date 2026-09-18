@@ -2056,12 +2056,17 @@ BetterChatSettings.ready.then(function () {
     const row = btn.closest('.msg');
     const raw = row && pinnable.get(row);
     if (!raw) return;
+    // Held only while the request is in flight, so a second click cannot send
+    // a second pin, and let go however it turns out. Pinning is the one action
+    // in this bar that can be taken back: delete can leave its button dead on
+    // success because the message is gone for good, but a message that has
+    // been pinned and then unpinned is pinnable again, and a button still
+    // disabled from the first time is the only thing saying otherwise.
     btn.disabled = true;
-    moderate({ action: 'pin', message: raw, duration: PIN_DURATION_MIN }, 'pin that message').then(
-      (ok) => {
-        if (!ok) btn.disabled = false;
-      }
-    );
+    moderate({ action: 'pin', message: raw, duration: PIN_DURATION_MIN }, 'pin that message')
+      .finally(() => {
+        btn.disabled = false;
+      });
   });
 
   // ---------------------------------------------------------------------
