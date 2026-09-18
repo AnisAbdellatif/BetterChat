@@ -520,6 +520,7 @@ BetterChatSettings.ready.then(function () {
   const buildIdEl = document.getElementById('buildId');
   const buildNoteEl = document.getElementById('buildNote');
   const copyBuildBtn = document.getElementById('copyBuild');
+  const recheckBuildBtn = document.getElementById('recheckBuild');
 
   // What this tab is running, read from the cache the worker filled. Null
   // where there is no worker at all (a fresh load, or an unsupported
@@ -567,6 +568,26 @@ BetterChatSettings.ready.then(function () {
 
   copyBuildBtn.addEventListener('click', async () => {
     if (await copyText(buildIdEl.textContent)) note('Build copied.');
+  });
+
+  // Opening the tab asks once, which is the wrong number when you are waiting
+  // on a deploy: the answer you want is the one from after it landed, and the
+  // panel is already open. /api/ is the one path the worker never answers for,
+  // so this really does reach the server every time.
+  //
+  // What it can tell you is what is being served, not what this tab has got:
+  // moving to a new build is the worker's job, and the note says what that
+  // takes. So the check can come back "a newer build is on the server" twice
+  // running without anything being wrong.
+  recheckBuildBtn.addEventListener('click', () => {
+    recheckBuildBtn.disabled = true;
+    // Said out loud, because an unchanged answer is indistinguishable from a
+    // button that did nothing.
+    buildNoteEl.textContent = 'Checking...';
+    // Let go however it turns out: a check that failed is one worth repeating.
+    showBuild().finally(() => {
+      recheckBuildBtn.disabled = false;
+    });
   });
 
   function openSettings() {

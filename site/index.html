@@ -937,7 +937,8 @@
     font-size: 12px;
     cursor: pointer;
   }
-  .build-row button:hover { background: #2a3238; border-color: #53fc18; }
+  .build-row button:hover:not(:disabled) { background: #2a3238; border-color: #53fc18; }
+  .build-row button:disabled { opacity: 0.45; cursor: default; }
   #actionNote { color: #53fc18; font-size: 12px; margin-top: 6px; min-height: 1.2em; }
   #actionNote.error { color: #ff6b6b; }
 </style>
@@ -1260,6 +1261,7 @@
           <div class="build-row">
             <code id="buildId">checking...</code>
             <button id="copyBuild" type="button" hidden>Copy</button>
+            <button id="recheckBuild" type="button">Recheck</button>
           </div>
           <div id="buildNote" class="section-desc"></div>
         </div>
