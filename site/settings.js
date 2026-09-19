@@ -105,8 +105,6 @@
   const BOOLEAN_KEYS = Object.freeze([
     'userCards', 'timestamps', 'scrollback', 'monocolor', 'dedupe',
     'collapseEmotes', 'showModeration',
-    // The moderation controls themselves, where they are possible at all.
-    'modTools',
     'showPinned',
     // Pinned messages arrive collapsed, and only open when the viewer says so.
     'collapsePinned',

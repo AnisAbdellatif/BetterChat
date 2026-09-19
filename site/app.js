@@ -117,7 +117,6 @@ BetterChatSettings.ready.then(function () {
     document.body.classList.toggle('user-cards', settings.userCards && !overlayMode);
     if (!settings.userCards) closeUserCard();
     trimHistory();
-    applyModerationState(); // sets the body class restyleRows reads
     restyleRows();
     applyPinVisibility();
     applyBeats();
@@ -1481,7 +1480,7 @@ BetterChatSettings.ready.then(function () {
     // Pinning hands Kick the message back whole, so what Kick sent has to be
     // kept, not just the few fields the row carries. Only while the controls
     // are on, and only for as long as the row lives.
-    if (modEnabled() && msg.raw) rememberForPin(row, msg.raw);
+    if (modAvailable && msg.raw) rememberForPin(row, msg.raw);
     fitActions(row);
 
     // This row now stands for the key, so a later repeat counts onto it.
@@ -1682,7 +1681,7 @@ BetterChatSettings.ready.then(function () {
       if (card.bio) userCardEl.appendChild(el('div', 'uc-bio', card.bio));
     }
 
-    if (modEnabled()) userCardEl.appendChild(renderModTools((card && card.username) || username, card));
+    if (modAvailable) userCardEl.appendChild(renderModTools((card && card.username) || username, card));
 
     const history = el('div', 'uc-history');
     history.appendChild(el('div', 'k', 'Recent messages'));
@@ -1860,24 +1859,21 @@ BetterChatSettings.ready.then(function () {
     resolve(msg);
   });
 
-  // Two separate things: whether moderating is possible here at all, and
-  // whether the viewer wants the controls. The first decides if the setting
-  // is worth showing, the second is that setting.
-  function modEnabled() {
-    return modAvailable && settings.modTools;
-  }
-
   // Only the body classes. Backfilling the buttons onto rows already drawn is
   // restyleRows' job, so that stays one walk of the list rather than two.
   function applyModerationState() {
-    document.body.classList.toggle('mod-capable', modAvailable);
-    document.body.classList.toggle('can-moderate', modEnabled());
+    document.body.classList.toggle('can-moderate', modAvailable);
     document.body.classList.toggle('can-reply', replyAvailable);
   }
 
   async function initModeration() {
     if (overlayMode || window.parent === window) return;
     const reply = await askParent({ type: 'hello' });
+    // The extension asks Kick outright - /channels/<slug>/me carries
+    // is_moderator, is_broadcaster and is_super_admin - so this is whether
+    // this account can moderate this channel, not merely whether it is signed
+    // in. There is nothing for the viewer to choose: someone who cannot
+    // moderate has no controls to turn off, and someone who can wants them.
     modAvailable = !!(reply && reply.available);
     // Replying is a separate permission from moderating: anyone signed in can
     // reply, and it needs a message box on the Kick page to type into, which
@@ -1893,7 +1889,7 @@ BetterChatSettings.ready.then(function () {
   // Success needs no announcement: Kick broadcasts the ban or the deletion,
   // and this page already draws those. Only failure has to be said out loud.
   async function moderate(payload, describe) {
-    if (!modEnabled()) return false;
+    if (!modAvailable) return false;
     const reply = await askParent({ type: 'action', ...payload });
     if (reply && reply.ok) return true;
 
@@ -2003,7 +1999,7 @@ BetterChatSettings.ready.then(function () {
   function fitActions(row) {
     const wanted = [];
     if (replyAvailable && canReplyTo(row)) wanted.push(['msg-reply', replyButton]);
-    if (modEnabled() && row.dataset.id) {
+    if (modAvailable && row.dataset.id) {
       // Pinning needs the whole message, and a row drawn before the controls
       // were on was never kept with one. Those can still be replied to and
       // deleted; the next message along is pinnable.
