@@ -220,86 +220,67 @@
 
   /* Moderation. Only drawn inside the extension, where the parent page can
      act on Kick for us; body.can-moderate is what says so. */
-  /* The settings row for the controls, hidden unless the extension answered
-     the handshake - there is nothing to configure anywhere else. */
-  .mod-only { display: none; }
-  body.mod-capable .mod-only { display: flex; }
-
-  body.can-moderate .msg { position: relative; }
-  .mod-delete {
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    padding: 0;
-    border: none;
-    border-radius: 5px;
-    background: rgba(0, 0, 0, 0.6);
-    color: #adadb8;
-    font-size: 19px;
-    line-height: 1;
-    cursor: pointer;
-  }
-  body.can-moderate .msg:hover .mod-delete { display: flex; }
-  .mod-delete:hover { color: #ff6b6b; }
-  .mod-delete:disabled { opacity: 0.4; cursor: default; }
-
-  .mod-pin {
-    position: absolute;
-    top: 2px;
-    right: 28px;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    padding: 0;
-    border: none;
-    border-radius: 5px;
-    background: rgba(0, 0, 0, 0.6);
-    color: #adadb8;
-    line-height: 1;
-    cursor: pointer;
-  }
-  /* Upright it reads as a plus; Kick's own is tilted. */
-  .mod-pin svg { width: 19px; height: 19px; transform: rotate(45deg); }
-  body.can-moderate .msg:hover .mod-pin { display: flex; }
-  .mod-pin:hover { color: #53fc18; }
-  .mod-pin:disabled { opacity: 0.4; cursor: default; }
-
-  /* Replying. Also extension-only, but a separate permission: anyone signed
-     in can reply, where moderating needs the badge for it. So it has a body
-     class of its own, and either button can appear without the other. */
+  /* The per-message controls: one floating bar rather than buttons laid over
+     the text. It sits above the message's top-right corner, so it covers the
+     gap and the row above instead of the words being acted on - reading a
+     message you are about to delete is the point of hovering it. */
+  body.can-moderate .msg,
   body.can-reply .msg { position: relative; }
-  .msg-reply {
+  .msg-actions {
     position: absolute;
-    top: 2px;
-    right: 2px;
+    top: -19px;
+    right: 4px;
+    z-index: 3;
     display: none;
     align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 6px;
+    background: #1b2126;
+    border: 1px solid #2f3a41;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  }
+  .msg:hover .msg-actions,
+  /* Kept open while a button in it has the keyboard, so tabbing to one does
+     not make it vanish. */
+  .msg-actions:focus-within { display: flex; }
+  .msg-actions button {
+    display: flex;
+    align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
     padding: 0;
     border: none;
-    border-radius: 5px;
-    background: rgba(0, 0, 0, 0.6);
+    border-radius: 4px;
+    background: transparent;
     color: #adadb8;
     line-height: 1;
     cursor: pointer;
   }
+  .msg-actions button:hover { background: #2a3238; }
+  .msg-actions button:disabled { opacity: 0.4; cursor: default; background: transparent; }
+  /* Fixed left to right whatever order they were added in: the handshake and
+     the moderation setting can each land after the row was drawn. Deleting is
+     last, furthest from the pointer's path. */
+  .msg-actions .msg-reply { order: 1; }
+  .msg-actions .mod-pin { order: 2; }
+  .msg-actions .mod-delete { order: 3; }
+
+  .mod-delete { font-size: 16px; }
+  .mod-delete:hover { color: #ff6b6b; }
+  /* Upright, the way a pin goes into a board. Smaller than the other two: it
+     is drawn on a 24 grid where they are on 20, so the same box would make it
+     the biggest thing in the bar. */
+  .mod-pin svg { width: 15px; height: 15px; }
+  .mod-pin:hover { color: #53fc18; }
+
+  /* Replying is extension-only like the rest, but a separate permission:
+     anyone signed in can reply, where moderating needs the badge for it. So
+     it has a body class of its own, and the bar can hold it alone. */
   /* Bigger than the icon looks like it should be: the delete button beside it
-     is a 19px glyph, and a 15px arrow next to it read as an afterthought. */
-  .msg-reply svg { width: 19px; height: 19px; }
-  /* The three stack from the right: delete, pin, reply. Each only claims its
-     slot when the ones to its right are actually drawn, so a viewer who can
-     reply but not moderate gets no gap where the others would have been. */
-  body.can-moderate .msg-reply { right: 54px; }
-  body.can-reply .msg:hover .msg-reply { display: flex; }
+     is a 16px glyph, and a smaller arrow next to it read as an afterthought. */
+  .msg-reply svg { width: 16px; height: 16px; }
   .msg-reply:hover { color: #53fc18; }
 
   /* What the next message will reply to. At the bottom: it belongs with
@@ -668,9 +649,9 @@
   }
   body.overlay #corner { display: none; }
   /* An overlay is on a stream, not beside Kick's message box: nothing there
-     can send a reply. initModeration bails in overlay mode so neither should
-     ever appear, but these keep a stray one off a broadcast. */
-  body.overlay .msg-reply, body.overlay #replyBar { display: none; }
+     can reply or moderate. initModeration bails in overlay mode so none of it
+     should ever appear, but these keep a stray control off a broadcast. */
+  body.overlay .msg-actions, body.overlay #replyBar { display: none; }
   body.overlay.replying #messages { padding-bottom: 10px; }
   .corner-btn {
     width: 30px;
@@ -951,7 +932,8 @@
     font-size: 12px;
     cursor: pointer;
   }
-  .build-row button:hover { background: #2a3238; border-color: #53fc18; }
+  .build-row button:hover:not(:disabled) { background: #2a3238; border-color: #53fc18; }
+  .build-row button:disabled { opacity: 0.45; cursor: default; }
   #actionNote { color: #53fc18; font-size: 12px; margin-top: 6px; min-height: 1.2em; }
   #actionNote.error { color: #ff6b6b; }
 </style>
@@ -1183,13 +1165,6 @@
               <div class="desc">Timeouts, bans, unbans and chat clears as lines in the chat.</div></span>
             <input type="checkbox" data-setting="showModeration" /><span class="switch"></span>
           </label>
-          <!-- Only shown where moderating is actually possible: inside the
-               KickPlus extension, signed in to Kick. -->
-          <label class="toggle-row mod-only" style="margin-top: 8px">
-            <span><span class="label">Moderation controls</span>
-              <div class="desc">Delete on a message, and timeout / ban / unban on a user card. Turn off to watch without them.</div></span>
-            <input type="checkbox" data-setting="modTools" /><span class="switch"></span>
-          </label>
         </div>
 
         <div class="setting">
@@ -1274,6 +1249,7 @@
           <div class="build-row">
             <code id="buildId">checking...</code>
             <button id="copyBuild" type="button" hidden>Copy</button>
+            <button id="recheckBuild" type="button">Recheck</button>
           </div>
           <div id="buildNote" class="section-desc"></div>
         </div>

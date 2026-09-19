@@ -117,7 +117,6 @@ BetterChatSettings.ready.then(function () {
     document.body.classList.toggle('user-cards', settings.userCards && !overlayMode);
     if (!settings.userCards) closeUserCard();
     trimHistory();
-    applyModerationState(); // sets the body class restyleRows reads
     restyleRows();
     applyPinVisibility();
     applyBeats();
@@ -130,8 +129,6 @@ BetterChatSettings.ready.then(function () {
   // of rows, and the colour picker and hex field update live, so this runs on
   // every input event while a colour is being dragged.
   function restyleRows() {
-    const withTools = modEnabled();
-    const withReply = replyAvailable;
     for (const row of messagesEl.querySelectorAll('.msg')) {
       const user = row.querySelector(':scope > .user');
       if (user) user.style.color = usernameColor(user.dataset.kickColor);
@@ -149,17 +146,9 @@ BetterChatSettings.ready.then(function () {
         row.classList.toggle('mentions-me', mentionsMe(row.dataset.text));
       }
 
-      // Rows drawn before the handshake landed have no buttons yet. Pinning
-      // is not backfilled: it needs the whole message, and a row drawn before
-      // the controls were on was not kept with one. Those rows can still be
-      // deleted and replied to, and the next message can be pinned.
-      if (withReply && canReplyTo(row) && !row.querySelector('.msg-reply')) {
-        row.appendChild(replyButton());
-      }
-      if (withTools && row.dataset.id && !row.querySelector('.mod-delete')) {
-        if (pinnable.has(row)) row.appendChild(pinButton());
-        row.appendChild(deleteButton());
-      }
+      // Rows drawn before the handshake landed, or before the controls were
+      // switched on, have no bar yet or an incomplete one.
+      fitActions(row);
     }
   }
 
@@ -530,6 +519,7 @@ BetterChatSettings.ready.then(function () {
   const buildIdEl = document.getElementById('buildId');
   const buildNoteEl = document.getElementById('buildNote');
   const copyBuildBtn = document.getElementById('copyBuild');
+  const recheckBuildBtn = document.getElementById('recheckBuild');
 
   // What this tab is running, read from the cache the worker filled. Null
   // where there is no worker at all (a fresh load, or an unsupported
@@ -577,6 +567,26 @@ BetterChatSettings.ready.then(function () {
 
   copyBuildBtn.addEventListener('click', async () => {
     if (await copyText(buildIdEl.textContent)) note('Build copied.');
+  });
+
+  // Opening the tab asks once, which is the wrong number when you are waiting
+  // on a deploy: the answer you want is the one from after it landed, and the
+  // panel is already open. /api/ is the one path the worker never answers for,
+  // so this really does reach the server every time.
+  //
+  // What it can tell you is what is being served, not what this tab has got:
+  // moving to a new build is the worker's job, and the note says what that
+  // takes. So the check can come back "a newer build is on the server" twice
+  // running without anything being wrong.
+  recheckBuildBtn.addEventListener('click', () => {
+    recheckBuildBtn.disabled = true;
+    // Said out loud, because an unchanged answer is indistinguishable from a
+    // button that did nothing.
+    buildNoteEl.textContent = 'Checking...';
+    // Let go however it turns out: a check that failed is one worth repeating.
+    showBuild().finally(() => {
+      recheckBuildBtn.disabled = false;
+    });
   });
 
   function openSettings() {
@@ -1466,16 +1476,12 @@ BetterChatSettings.ready.then(function () {
     row.appendChild(tag);
 
     // Only where they can actually work, so ordinary viewers carry no extra
-    // nodes per message. CSS reveals them on hover.
-    if (replyAvailable && canReplyTo(row)) row.appendChild(replyButton());
-    if (modEnabled()) {
-      // Pinning hands Kick the message back whole, so what Kick sent has to
-      // be kept, not just the few fields the row carries. Only while the
-      // controls are on, and only for as long as the row lives.
-      if (msg.raw) rememberForPin(row, msg.raw);
-      row.appendChild(pinButton());
-      row.appendChild(deleteButton());
-    }
+    // nodes per message. CSS reveals the bar on hover.
+    // Pinning hands Kick the message back whole, so what Kick sent has to be
+    // kept, not just the few fields the row carries. Only while the controls
+    // are on, and only for as long as the row lives.
+    if (modAvailable && msg.raw) rememberForPin(row, msg.raw);
+    fitActions(row);
 
     // This row now stands for the key, so a later repeat counts onto it.
     // Registered even with counting off, so turning it on mid-stream works on
@@ -1675,7 +1681,7 @@ BetterChatSettings.ready.then(function () {
       if (card.bio) userCardEl.appendChild(el('div', 'uc-bio', card.bio));
     }
 
-    if (modEnabled()) userCardEl.appendChild(renderModTools((card && card.username) || username, card));
+    if (modAvailable) userCardEl.appendChild(renderModTools((card && card.username) || username, card));
 
     const history = el('div', 'uc-history');
     history.appendChild(el('div', 'k', 'Recent messages'));
@@ -1853,24 +1859,21 @@ BetterChatSettings.ready.then(function () {
     resolve(msg);
   });
 
-  // Two separate things: whether moderating is possible here at all, and
-  // whether the viewer wants the controls. The first decides if the setting
-  // is worth showing, the second is that setting.
-  function modEnabled() {
-    return modAvailable && settings.modTools;
-  }
-
   // Only the body classes. Backfilling the buttons onto rows already drawn is
   // restyleRows' job, so that stays one walk of the list rather than two.
   function applyModerationState() {
-    document.body.classList.toggle('mod-capable', modAvailable);
-    document.body.classList.toggle('can-moderate', modEnabled());
+    document.body.classList.toggle('can-moderate', modAvailable);
     document.body.classList.toggle('can-reply', replyAvailable);
   }
 
   async function initModeration() {
     if (overlayMode || window.parent === window) return;
     const reply = await askParent({ type: 'hello' });
+    // The extension asks Kick outright - /channels/<slug>/me carries
+    // is_moderator, is_broadcaster and is_super_admin - so this is whether
+    // this account can moderate this channel, not merely whether it is signed
+    // in. There is nothing for the viewer to choose: someone who cannot
+    // moderate has no controls to turn off, and someone who can wants them.
     modAvailable = !!(reply && reply.available);
     // Replying is a separate permission from moderating: anyone signed in can
     // reply, and it needs a message box on the Kick page to type into, which
@@ -1886,7 +1889,7 @@ BetterChatSettings.ready.then(function () {
   // Success needs no announcement: Kick broadcasts the ban or the deletion,
   // and this page already draws those. Only failure has to be said out loud.
   async function moderate(payload, describe) {
-    if (!modEnabled()) return false;
+    if (!modAvailable) return false;
     const reply = await askParent({ type: 'action', ...payload });
     if (reply && reply.ok) return true;
 
@@ -1978,6 +1981,51 @@ BetterChatSettings.ready.then(function () {
   }
 
   // ---------------------------------------------------------------------
+  // The per-message bar
+  //
+  // Reply, pin and delete live in one floating bar above the message rather
+  // than as buttons laid over it: hovering a message is how you read the
+  // thing you are about to act on, so the controls sit clear of the words.
+  //
+  // Which buttons belong there changes after a row is drawn - the extension's
+  // handshake lands late, and the moderation setting can be switched at any
+  // time - so this is written to be run again on a row it has already built.
+  // It adds what is missing, removes what no longer applies, and drops the
+  // bar entirely when nothing is left, so an ordinary viewer carries no extra
+  // node per message. CSS orders the buttons, so they need not be added in
+  // any particular order.
+  // ---------------------------------------------------------------------
+
+  function fitActions(row) {
+    const wanted = [];
+    if (replyAvailable && canReplyTo(row)) wanted.push(['msg-reply', replyButton]);
+    if (modAvailable && row.dataset.id) {
+      // Pinning needs the whole message, and a row drawn before the controls
+      // were on was never kept with one. Those can still be replied to and
+      // deleted; the next message along is pinnable.
+      if (pinnable.has(row)) wanted.push(['mod-pin', pinButton]);
+      wanted.push(['mod-delete', deleteButton]);
+    }
+
+    let bar = row.querySelector(':scope > .msg-actions');
+    if (!wanted.length) {
+      if (bar) bar.remove();
+      return;
+    }
+    if (!bar) {
+      bar = el('div', 'msg-actions');
+      row.appendChild(bar);
+    }
+    const keep = new Set(wanted.map(([name]) => name));
+    for (const btn of [...bar.children]) {
+      if (!keep.has(btn.className)) btn.remove();
+    }
+    for (const [name, build] of wanted) {
+      if (!bar.querySelector(`:scope > .${name}`)) bar.appendChild(build());
+    }
+  }
+
+  // ---------------------------------------------------------------------
   // Pinning
   //
   // Kick's pin call takes the whole message back - sender, badges and all -
@@ -1999,15 +2047,21 @@ BetterChatSettings.ready.then(function () {
   // button matching the default is what a moderator gets by clicking pin.
   const PIN_DURATION_MIN = 1200;
 
+  // A drawing-pin seen side on: head, shaft, and the point going into the
+  // board. Kick's own is a plus tilted 45 degrees, which reads as "add" as
+  // easily as "pin"; next to a reply arrow and a cross, the shape of the
+  // thing itself is what makes the button obvious without its tooltip.
+  // Drawn on a 24-wide grid, which is what it was designed on.
+  const PIN_BOX = '0 0 24 24';
   const PIN_PATH =
-    'M10 2.5a.83.83 0 0 0-.83.83v5h-2.5a.83.83 0 0 0 0 1.67h2.5v6.67a.83.83 0 0 0 1.66 0V10h2.5a.83.83 0 0 0 0-1.67h-2.5v-5A.83.83 0 0 0 10 2.5';
+    'M16 9V4h1a1 1 0 0 0 0-2H7a1 1 0 0 0 0 2h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3';
 
   function pinButton() {
     const btn = el('button', 'mod-pin');
     btn.type = 'button';
     btn.title = 'Pin this message';
     btn.setAttribute('aria-label', 'Pin this message');
-    btn.appendChild(icon([PIN_PATH]));
+    btn.appendChild(icon([PIN_PATH], null, PIN_BOX));
     return btn;
   }
 
@@ -2019,12 +2073,17 @@ BetterChatSettings.ready.then(function () {
     const row = btn.closest('.msg');
     const raw = row && pinnable.get(row);
     if (!raw) return;
+    // Held only while the request is in flight, so a second click cannot send
+    // a second pin, and let go however it turns out. Pinning is the one action
+    // in this bar that can be taken back: delete can leave its button dead on
+    // success because the message is gone for good, but a message that has
+    // been pinned and then unpinned is pinnable again, and a button still
+    // disabled from the first time is the only thing saying otherwise.
     btn.disabled = true;
-    moderate({ action: 'pin', message: raw, duration: PIN_DURATION_MIN }, 'pin that message').then(
-      (ok) => {
-        if (!ok) btn.disabled = false;
-      }
-    );
+    moderate({ action: 'pin', message: raw, duration: PIN_DURATION_MIN }, 'pin that message')
+      .finally(() => {
+        btn.disabled = false;
+      });
   });
 
   // ---------------------------------------------------------------------
@@ -2051,9 +2110,9 @@ BetterChatSettings.ready.then(function () {
     'M4.17 16.67a.83.83 0 0 1-.6-1.42L15.25 3.58a.83.83 0 1 1 1.18 1.18L4.75 16.43a.8.8 0 0 1-.6.24z',
   ];
 
-  function icon(paths, className) {
+  function icon(paths, className, viewBox) {
     const svg = document.createElementNS(SVG_NS, 'svg');
-    svg.setAttribute('viewBox', '0 0 20 20');
+    svg.setAttribute('viewBox', viewBox || '0 0 20 20');
     svg.setAttribute('fill', 'none');
     svg.setAttribute('aria-hidden', 'true');
     if (className) svg.setAttribute('class', className);

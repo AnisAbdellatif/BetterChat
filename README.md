@@ -63,24 +63,27 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
   the user a reply is aimed at, the pinned message's author, and the names in
   moderation and event lines (both the user banned and the moderator who
   banned them).
-- **Moderating, inside the KickPlus extension only.** Hovering a message gives a
-  delete button, and a user card gains timeout (1m / 5m / 15m / 1h / 1d) and
-  ban, or unban for anyone currently banned or timed out. This page has no
+- **Moderating, inside the KickPlus extension only.** Hovering a message
+  floats a small bar of controls above it - reply, pin, delete, whichever of
+  them apply - rather than laying buttons over the text, since hovering a
+  message is how you read the thing you are about to act on. A user card gains
+  timeout (1m / 5m / 15m / 1h / 1d) and ban, or unban for anyone currently
+  banned or timed out. This page has no
   Kick session of its own and never will - that
   is what makes it safe to open anywhere - so it asks the extension, whose
   content script is on kick.com and can act as the signed-in moderator. On
   betterchat.tech or in an overlay nothing answers the handshake and no
   controls appear. Nothing is announced on success: Kick broadcasts the ban
   or deletion and the chat already draws it. A refusal from Kick is shown as
-  a line, and a 403 hides the controls for the rest of the session. Hovering
-  also gives **pin**, which pins for Kick's own default of 20 hours, and the
+  a line, and a 403 hides the controls for the rest of the session. The bar
+  also carries **pin**, which pins for Kick's own default of 20 hours, and the
   banner then carries **Unpin** beside its hide button - unpinning takes it
   off the channel where hiding only takes it off this tab, which is why one
   says a word and the other is a glyph. Neither draws anything itself: Kick
   broadcasts both, and this page has always drawn those events.
-- **Replying, inside the KickPlus extension only.** Hovering a message also
-  gives a reply button, and a bar along the bottom then says what the next
-  message will reply to, with Escape or its own button to cancel. This page
+- **Replying, inside the KickPlus extension only.** The hover bar's reply
+  button arms one, and a bar along the bottom then says what the next message
+  will reply to, with Escape or its own button to cancel. This page
   has no message box: Kick's is still there below the frame, and that is what
   the viewer types in. So the button only says *which* message, and the
   extension makes the next message typed into Kick's box a reply to it.
@@ -114,8 +117,9 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
   back-to-back once, with a combo count beside it (`×12`); highlight messages
   that @mention you.
 - Events: what to do with deleted messages, which moderation / pin / sub /
-  gift / host events to show, whether a pinned message starts collapsed, and
-  a switch for the moderation controls (shown only where they work).
+  gift / host events to show, and whether a pinned message starts collapsed.
+  The moderation controls themselves are not a setting: they appear when Kick
+  says the signed-in account can moderate the channel, and not otherwise.
 - Overlay & sharing: fade-out time for the OBS overlay, copy an overlay or
   settings link, export / import settings as JSON, reset, and the switch for
   the anonymous viewer count (the same answer the first-visit banner asks

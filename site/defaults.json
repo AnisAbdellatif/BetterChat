@@ -36,7 +36,6 @@
   "collapseEmotes": true,
   "deletedMessages": "gray",
   "showModeration": true,
-  "modTools": false,
   "showPinned": true,
   "collapsePinned": true,
   "showSubs": true,
