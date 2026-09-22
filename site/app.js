@@ -67,9 +67,29 @@ BetterChatSettings.ready.then(function () {
 
   let settings = sanitize({ ...loadStoredSettings(), ...urlSettings });
 
+  // Where the settings are kept. localStorage everywhere, except inside the
+  // KickPlus extension, where the parent tab holds them instead.
+  //
+  // This page is third-party storage in that iframe, and a browser may treat
+  // third-party storage as disposable. Brave does: it deletes an embedded
+  // origin's storage thirty seconds after the last kick.com tab closes, so
+  // everything saved here quietly evaporates between sessions - the counting
+  // question comes back, and so do the default font and badges. The extension
+  // has storage of its own that no shield partitions, so when it offers to
+  // hold them, it holds them. Set once the handshake answers; until then, and
+  // everywhere else, this stays null and nothing about saving changes.
+  let settingsHeldByParent = false;
+
   function saveSettings() {
     // A shared link's settings shouldn't silently overwrite the viewer's own.
     if (settingsFromUrlOnly) return;
+    if (settingsHeldByParent) {
+      // Nothing waits on the answer: a save that failed leaves the settings
+      // applied and the next one tries again, which is what localStorage does
+      // when it throws.
+      askParent({ type: 'settings', settings });
+      return;
+    }
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     } catch (_e) {
@@ -1884,6 +1904,32 @@ BetterChatSettings.ready.then(function () {
     // The handshake can land after the first messages are on screen.
     restyleRows();
     if (reply && reply.reply) showReplyArmed(reply.reply);
+    adoptParentSettings(reply);
+  }
+
+  // The extension is the home for these now, if it says it can be. A link's
+  // settings are still the link's: it overrides whatever is stored and saves
+  // nothing, which is as true of the extension's copy as of this page's.
+  function adoptParentSettings(reply) {
+    handshakeSettled = true;
+    if (!reply || !reply.storesSettings || settingsFromUrlOnly) {
+      // Nothing is holding them, so the banner this was waiting on can ask.
+      applySettings();
+      return;
+    }
+    settingsHeldByParent = true;
+    if (reply.settings) {
+      settings = sanitize(reply.settings);
+      syncPanel();
+      applySettings();
+    } else {
+      // First run against an extension that stores them: what this page has
+      // is what there is, so it goes up rather than being thrown away. On a
+      // browser that has been discarding this page's storage there will be
+      // nothing here to send, which is the whole complaint.
+      saveSettings();
+      applySettings();
+    }
   }
 
   // Success needs no announcement: Kick broadcasts the ban or the deletion,
@@ -2665,9 +2711,15 @@ BetterChatSettings.ready.then(function () {
   document.getElementById('consentYes').addEventListener('click', () => answerConsent('on'));
   document.getElementById('consentNo').addEventListener('click', () => answerConsent('off'));
 
+  // Framed, the answer may already be stored in the extension and on its way
+  // here. Asking before it lands would show the banner for the length of a
+  // round trip to someone who answered it weeks ago.
+  let handshakeSettled = window.parent === window || overlayMode;
+
   function showConsentIfUnanswered() {
-    // Nothing to ask about where nothing could be sent anyway.
-    consentEl.hidden = !(beatsPossible && settings.stats === 'ask');
+    // Nothing to ask about where nothing could be sent anyway, and nothing to
+    // ask yet while the answer might be arriving.
+    consentEl.hidden = !(beatsPossible && handshakeSettled && settings.stats === 'ask');
   }
 
   // Refreshes the pin from Kick's history endpoint (used on connect and
