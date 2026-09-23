@@ -788,7 +788,14 @@
   .toggle-row input:checked + .switch { background: #53fc18; }
   .toggle-row input:checked + .switch::after { transform: translateX(16px); }
   .toggle-row input:focus-visible + .switch { outline: 2px solid #53fc18; outline-offset: 2px; }
-  .sub {
+  /* The settings panel's indented field rows. Scoped to the panel, and it has
+     to stay that way: a chat subscription is drawn as `class="event sub"`, so
+     an unscoped `.sub` turns every sub in chat into a two-column grid - the
+     star in a stretched first column, the name pushed to the far right, and
+     "just subscribed" wrapped onto a line of its own. Which is exactly what it
+     did. The other event kinds - gift, host, mod - have no rule of their own
+     outside `.event`, so this was the only name that collided. */
+  #settingsPanel .sub {
     display: grid;
     grid-template-columns: 1fr auto;
     align-items: center;
@@ -798,7 +805,7 @@
     border-left: 2px solid #2a3035;
     color: #d3d3d8;
   }
-  .sub[hidden] { display: none; }
+  #settingsPanel .sub[hidden] { display: none; }
   /* Same indent as .sub, for a nested toggle rather than a labelled field.
      No display of its own, so the browser's [hidden] rule works as is. */
   .sub-toggle {
@@ -806,8 +813,10 @@
     padding-left: 10px;
     border-left: 2px solid #2a3035;
   }
-  .sub .field-desc { grid-column: 1 / -1; color: #adadb8; font-size: 12px; margin-top: -2px; }
-  .sub input[type="number"], .sub input[type="text"], .sub select {
+  #settingsPanel .sub .field-desc { grid-column: 1 / -1; color: #adadb8; font-size: 12px; margin-top: -2px; }
+  #settingsPanel .sub input[type="number"],
+  #settingsPanel .sub input[type="text"],
+  #settingsPanel .sub select {
     box-sizing: border-box;
     width: 96px;
     background: #0b0e0f;
@@ -817,12 +826,13 @@
     padding: 5px 8px;
     font-size: 13px;
   }
-  .sub select { width: 160px; cursor: pointer; }
-  .sub input[type="text"].wide { width: 160px; }
-  .sub input:focus, .sub select:focus { outline: none; border-color: #53fc18; }
+  #settingsPanel .sub select { width: 160px; cursor: pointer; }
+  #settingsPanel .sub input[type="text"].wide { width: 160px; }
+  #settingsPanel .sub input:focus,
+  #settingsPanel .sub select:focus { outline: none; border-color: #53fc18; }
   /* Always-visible field group (no toggle above it). */
-  .sub.plain { margin-top: 0; padding-left: 0; border-left: none; }
-  .sub input:invalid { border-color: #ff6b6b; }
+  #settingsPanel .sub.plain { margin-top: 0; padding-left: 0; border-left: none; }
+  #settingsPanel .sub input:invalid { border-color: #ff6b6b; }
   .checks {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
