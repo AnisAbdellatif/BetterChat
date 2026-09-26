@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# After a deploy, the public URLs answer as expected, through the real
+# proxy chain (a redirect or a proxy health check gone wrong shows here,
+# not in the container's healthcheck). KIT_SMOKE_URLS: URL[|STATUS[|TEXT]]
+# ...; STATUS like 200, 2xx or 200-399 (default 200-399); TEXT must appear
+# in the body. Within `kit deploy`, which runs it once at the end itself,
+# the post-deploy hook skips it.
+. "$(dirname "$0")/_preamble.sh"
+
+if [ "${KIT_HOOK:-}" = post-deploy ] && [ -n "${KIT_RUN_DIR:-}" ]; then exit 0; fi
+urls=$(kit_conf KIT_SMOKE_URLS "")
+[ -n "$urls" ] || exit 0
+# Missing, every check would fail as if the site were down.
+kit_require curl "for the smoke tests"
+retries=$(kit_conf KIT_SMOKE_RETRIES 10)
+interval=$(kit_conf KIT_SMOKE_INTERVAL 3)
+timeout=$(kit_conf KIT_SMOKE_TIMEOUT 10)
+read -r -a curl_args <<<"$(kit_conf KIT_SMOKE_CURL_ARGS "")"
+body=$(mktemp)
+trap 'rm -f "$body"' EXIT
+
+status_ok() { # STATUS EXPECTED
+  case $2 in
+    [1-5]xx) [ "${1:0:1}" = "${2:0:1}" ] ;;
+    *-*) [ "$1" -ge "${2%-*}" ] && [ "$1" -le "${2#*-}" ] ;;
+    *) [ "$1" = "$2" ] ;;
+  esac
+}
+
+check() { # URL EXPECTED TEXT
+  local status
+  status=$(curl -sS -o "$body" -w '%{http_code}' --max-time "$timeout" ${curl_args[@]+"${curl_args[@]}"} "$1" 2>/dev/null) || status=000
+  status_ok "$status" "$2" || { last="got $status, expected $2"; return 1; }
+  if [ -n "$3" ] && ! grep -qF -- "$3" "$body"; then
+    last="got $status but the body lacks \"$3\""
+    return 1
+  fi
+}
+
+failed=0
+for entry in $(kit_words "$urls"); do
+  IFS='|' read -r url expected text <<<"$entry"
+  expected=${expected:-200-399}
+  last=""
+  attempt=0
+  ok=false
+  while :; do
+    attempt=$((attempt + 1))
+    if check "$url" "$expected" "${text:-}"; then
+      ok=true
+      break
+    fi
+    [ "$attempt" -ge "$retries" ] && break
+    sleep "$interval"
+  done
+  if [ "$ok" = true ]; then
+    kit_ok "smoke: $url"
+  else
+    kit_error "smoke: $url: $last (after $attempt tries)"
+    failed=1
+  fi
+done
+exit "$failed"

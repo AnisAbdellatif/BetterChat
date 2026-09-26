@@ -1,0 +1,16 @@
+# The same, for a Caddy running in a container: it can't reach the host's
+# loopback, so it joins Kamal's Docker network ("kamal") and talks to the
+# kamal-proxy container by name. In config/deploy.yml, then:
+#   proxy: { run: { publish: false } }   (instead of http_port/https_port/bind_ips)
+# and in Caddy's compose service:
+#   networks: [kamal]    with    networks: { kamal: { external: true } }
+<app.example.com> {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+	reverse_proxy kamal-proxy:80
+}

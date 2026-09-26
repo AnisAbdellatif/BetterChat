@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# The image being deployed carries a GitHub build attestation from this
+# repository (and, with KIT_ATTESTATION_SIGNER_WORKFLOW, from that
+# workflow). For images built by CI and deployed with --skip-push: an image
+# pushed by anything else (a leaked registry token, a compromised runner of
+# another workflow) is refused. docs/security.md. With several images,
+# KIT_IMAGE_<SERVICE> per Kamal service.
+. "$(dirname "$0")/_preamble.sh"
+
+# kit sandbox: local, nothing to check against GitHub, the branch or a freeze.
+if [ -n "${KIT_SANDBOX:-}" ]; then
+  kit_info "sandbox: attestation skipped"
+  exit 0
+fi
+
+kit_require gh "GitHub's CLI, logged in: gh auth login"
+# Per Kamal service first (a project with several images):
+# KIT_IMAGE_<SERVICE>, e.g. KIT_IMAGE_MYAPP_WORKER for service myapp-worker.
+image=""
+[ -z "${KAMAL_SERVICE:-}" ] || image=$(kit_conf "KIT_IMAGE_$(kit_upper "$KAMAL_SERVICE")" "")
+[ -n "$image" ] || image=$(kit_conf KIT_IMAGE "")
+[ -n "$image" ] || kit_die "set KIT_IMAGE (e.g. ghcr.io/owner/app) to verify attestations"
+version=$(kit_version_being_deployed)
+repo=$(kit_conf KIT_GITHUB_REPO "")
+[ -n "$repo" ] || repo=$(cd "$KIT_PROJECT_DIR" && gh repo view --json nameWithOwner -q .nameWithOwner) ||
+  kit_die "could not tell the GitHub repository: set KIT_GITHUB_REPO=owner/repo"
+
+args=(attestation verify "oci://$image:$version" --repo "$repo")
+signer=$(kit_conf KIT_ATTESTATION_SIGNER_WORKFLOW "")
+[ -n "$signer" ] && args+=(--signer-workflow "$signer")
+read -r -a extra <<<"$(kit_conf KIT_ATTESTATION_ARGS "")"
+args+=(${extra[@]+"${extra[@]}"})
+
+if gh "${args[@]}" >/dev/null; then
+  kit_ok "attestation verified for $image:$version"
+else
+  kit_die "no valid attestation for $image:$version from $repo${signer:+ ($signer)}: not deploying it"
+fi

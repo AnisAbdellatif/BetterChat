@@ -1,0 +1,22 @@
+# BetterChat's sites for the host's Caddy. Copy to /etc/caddy/betterchat.caddy and import it from
+# /etc/caddy/Caddyfile, next to the other sites there:
+#
+#   import betterchat.caddy
+#
+# then `caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy`. Deploys never copy or reload
+# it; change the host's copy by hand. Caddy obtains and renews the TLS certificates automatically.
+#
+# Both domains go to kamal-proxy on loopback (proxy.run in config/deploy.yml), which routes on the Host header
+# Caddy keeps and swaps the app's containers with no downtime.
+
+betterchat.tech {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8080
+}
+
+# Dev: answers 404 from kamal-proxy while nothing is deployed there. Search engines are asked not to index it.
+dev.betterchat.tech {
+	encode zstd gzip
+	header X-Robots-Tag "noindex, nofollow"
+	reverse_proxy 127.0.0.1:8080
+}

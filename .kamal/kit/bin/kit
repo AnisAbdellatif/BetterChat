@@ -1,0 +1,873 @@
+#!/usr/bin/env bash
+# deploy-kit: presets around Kamal. `kit help` lists the commands;
+# README.md explains the whole.
+set -euo pipefail
+
+KIT_BIN=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")
+KIT_HOME=$(cd "$(dirname "$KIT_BIN")/.." && pwd)
+KIT=$KIT_BIN # what group scripts call: "$KIT" role-exec …
+export KIT_BIN KIT_HOME KIT
+
+# shellcheck source=../lib/core.sh
+. "$KIT_HOME/lib/core.sh"
+# shellcheck source=../lib/notify.sh
+. "$KIT_HOME/lib/notify.sh"
+# shellcheck source=../lib/kamal.sh
+. "$KIT_HOME/lib/kamal.sh"
+# shellcheck source=../lib/hooks.sh
+. "$KIT_HOME/lib/hooks.sh"
+# shellcheck source=../lib/groups.sh
+. "$KIT_HOME/lib/groups.sh"
+# shellcheck source=../lib/sops.sh
+. "$KIT_HOME/lib/sops.sh"
+# shellcheck source=../lib/runner.sh
+. "$KIT_HOME/lib/runner.sh"
+# shellcheck source=../lib/sandbox.sh
+. "$KIT_HOME/lib/sandbox.sh"
+
+KIT_KAMAL_HOOKS="docker-setup pre-connect pre-build pre-deploy post-deploy pre-app-boot post-app-boot pre-proxy-reboot post-proxy-reboot"
+
+usage() {
+  cat <<EOF
+deploy-kit $(cat "$KIT_HOME/VERSION") — presets around Kamal
+
+Deploying
+  kit deploy [-d DEST] [-c CONFIG] [-P|--skip-push] [--version V] [--bootstrap]
+             [--group NAME]... [--no-smoke] [--no-rollback] [-- KAMAL-ARGS]
+      Deploy everything: plain roles with Kamal, then each group by its
+      strategy, then smoke tests; rolls back if they fail. -c picks a Kamal
+      config (and so its groups); --bootstrap: a first deploy of standby groups;
+      --group: only these groups (no plain roles), smoke tests and rollback included.
+  kit group deploy NAME [-d DEST] [--bootstrap] [--role ROLE]... [-- KAMAL-ARGS]
+  kit group switch NAME [--to ROLE] [-d DEST]   hand a standby group over (rollback, and forward again)
+  kit group status [NAME] [-d DEST]
+  kit group list
+  kit smoke [-d DEST]                           run the smoke tests now
+  kit freeze [-d DEST] [REASON...] | kit unfreeze [-d DEST]
+
+Helpers
+  kit kamal [-d DEST] [-c CONFIG] ARGS...       Kamal, as the kit runs it (in its image with KIT_RUNNER=docker)
+  kit role-exec ROLE COMMAND [-d DEST]          run COMMAND in ROLE's running container
+  kit notify LEVEL MESSAGE [-d DEST]            info | success | warning | error
+  kit ping URL                                  heartbeat, never fails
+  kit sops get FILE KEY | kit sops env FILE | kit sops decrypt-dir DIR
+  kit hook NAME                                 what .kamal/hooks/<NAME> runs
+
+Setting up
+  kit init [--no-vendor] [--force] [--preset NAME]  add the kit to this project
+                                                (presets: behind-caddy)
+  kit update [--from PATH|GIT-URL] [--ref REF]  replace the vendored copy in .kamal/kit
+  kit host script                               print host/setup.sh (pipe it to a server)
+  kit host remote USER@HOST [SETUP-ARGS...]     run host setup on a server over SSH
+  kit host cloud-init [SETUP-ARGS...]           cloud-init user data that runs host setup
+  kit doctor [-d DEST]                          check tools and configuration
+  kit sandbox up|deploy|status|down|...         this deploy path on this machine (kit sandbox help)
+  kit version
+EOF
+}
+
+# ------------------------------------------------------------- arguments
+
+# Commands take -d/--destination and -c/--config-file (a Kamal config,
+# exported as KIT_KAMAL_CONFIG_FILE) anywhere before "--".
+# _take_destination sets DEST and leaves the other arguments in ARGS.
+DEST=""
+ARGS=()
+_take_destination() {
+  ARGS=()
+  while [ $# -gt 0 ]; do
+    case $1 in
+      -d | --destination)
+        [ $# -ge 2 ] || kit_die "$1 needs a value"
+        DEST=$2
+        shift 2
+        ;;
+      -d*) DEST=${1#-d} && shift ;;
+      --destination=*) DEST=${1#--destination=} && shift ;;
+      -c | --config-file)
+        [ $# -ge 2 ] || kit_die "$1 needs a value"
+        export KIT_KAMAL_CONFIG_FILE=$2
+        shift 2
+        ;;
+      --config-file=*) export KIT_KAMAL_CONFIG_FILE=${1#--config-file=} && shift ;;
+      --)
+        ARGS+=("$@")
+        return
+        ;;
+      *) ARGS+=("$1") && shift ;;
+    esac
+  done
+}
+
+_join() { # SEPARATOR WORDS...
+  local sep=$1 out="" word
+  shift
+  for word in "$@"; do out="$out${out:+$sep}$word"; done
+  printf '%s\n' "$out"
+}
+
+# Who deploys, for the notifications. Never fails: in a container, the user
+# may have no name and git no identity.
+_performer() {
+  git config user.email 2>/dev/null || id -un 2>/dev/null || printf '%s\n' "${USER:-uid $(id -u)}"
+}
+
+# _pull_version: the version to deploy when images are pulled, not built
+# (--skip-push): the checkout's commit. Kamal would otherwise name it
+# <sha>_uncommitted_<hash> as soon as `git status` shows anything, even an
+# untracked file, and no image has that tag. Changes to tracked files are
+# refused: the image of this commit doesn't contain them.
+# _check_image VERSION: with images built elsewhere (CI), the registry has
+# this one, before anything is deployed or notified. Missing, it would fail
+# late: as Kamal's pull on the servers, or as a missing attestation. Stops
+# only when the registry says it isn't there; carries on when it can't tell.
+_check_image() {
+  local version=$1 out repository image why status=0
+  [ -z "${KIT_SANDBOX:-}" ] || return 0
+  kit_is_true "$(kit_conf KIT_CHECK_IMAGE true)" || return 0
+  out=$(kit_kamal config 2>/dev/null) || out=""
+  repository=$(kit_kamal_config_get repository "$out") || exit 1
+  if [ -z "$repository" ]; then
+    kit_info "couldn't tell the image from \`kamal config\`: not checked"
+    return 0
+  fi
+  image="$repository:$version"
+  why=$(_image_status "$image") || status=$?
+  case $status in
+    0) kit_ok "image $image is in the registry" ;;
+    1) kit_die "no image $image in the registry: nothing to deploy for ${version:0:12}. The images come from elsewhere (KIT_DEPLOY_SKIP_PUSH): has CI built this commit? It may build only some branches, or not have finished (docs/branches.md). KIT_CHECK_IMAGE=false skips this check" ;;
+    *) kit_info "couldn't check that $image is in the registry (${why:-no answer}): carrying on" ;;
+  esac
+}
+
+# _image_status IMAGE: 0 the registry has IMAGE, 1 it says it hasn't, 2
+# can't tell (no docker, no access, no answer: why, on stdout). Uses this
+# machine's registry logins.
+_image_status() {
+  local docker=() out
+  read -r -a docker <<<"${KIT_DOCKER:-docker}"
+  command -v "${docker[0]:-docker}" >/dev/null 2>&1 || { echo "no docker here"; return 2; }
+  out=$(kit_timeout 30 kit_docker manifest inspect "$1" 2>&1 >/dev/null) && return 0
+  case $out in
+    *"manifest unknown"* | *"no such manifest"* | *"MANIFEST_UNKNOWN"*) return 1 ;;
+  esac
+  printf '%s\n' "$out" | sed '/^[[:space:]]*$/d' | head -n 1 | cut -c 1-160
+  return 2
+}
+
+_pull_version() {
+  local changes
+  changes=$(git -C "$KIT_PROJECT_DIR" status --porcelain --untracked-files=no 2>/dev/null) || true
+  if [ -n "$changes" ]; then
+    printf '%s\n' "$changes" >&2
+    kit_die "uncommitted changes (above): the images are built from commits, so these wouldn't be deployed. Commit or stash them"
+  fi
+  git -C "$KIT_PROJECT_DIR" rev-parse HEAD
+}
+
+_short_version() {
+  local v
+  v=${1:-$(git -C "$KIT_PROJECT_DIR" rev-parse HEAD 2>/dev/null || echo "?")}
+  kit_is_sha "$v" && v=${v:0:7}
+  printf '%s\n' "$v"
+}
+
+# ---------------------------------------------------------------- deploy
+
+cmd_deploy() {
+  local skip_push=false version="" smoke=true rollback=true bootstrap=() kamal_args=() only=""
+  _take_destination "$@"
+  set -- ${ARGS[@]+"${ARGS[@]}"}
+  while [ $# -gt 0 ]; do
+    case $1 in
+      -P | --skip-push) skip_push=true ;;
+      --version) version=$2 && shift ;;
+      --version=*) version=${1#--version=} ;;
+      --group)
+        [ $# -ge 2 ] || kit_die "--group needs a group"
+        only="$only $2"
+        shift
+        ;;
+      --group=*) only="$only ${1#--group=}" ;;
+      --no-smoke) smoke=false ;;
+      --no-rollback) rollback=false ;;
+      --bootstrap) bootstrap=(--bootstrap) ;;
+      --) shift && kamal_args=("$@") && break ;;
+      *) kit_die "kit deploy: unknown option $1 (Kamal's own go after --)" ;;
+    esac
+    shift
+  done
+  kit_load_config "$DEST"
+  kit_require_kamal
+  # A skip that needs a reason is refused now, not after the first group.
+  kit_skip_reason_check || exit 1
+  # Without curl every smoke check fails, which would roll back a good
+  # deploy: missing, it's said now, before anything is deployed.
+  if [ "$smoke" = true ] && [ -n "$(kit_conf KIT_SMOKE_URLS "")" ]; then
+    kit_require curl "for the smoke tests; --no-smoke deploys without them"
+  fi
+  kit_is_true "$(kit_conf KIT_AUTO_ROLLBACK true)" || rollback=false
+  kit_is_true "$(kit_conf KIT_DEPLOY_SKIP_PUSH false)" && skip_push=true
+  # One version for every Kamal call of this deploy (plain roles, each
+  # group, the rollback): pulled images are the checkout's commit's; a
+  # build is tagged with Kamal's own version for this checkout.
+  if [ -z "$version" ]; then
+    if [ "$skip_push" = true ]; then
+      version=$(_pull_version) || exit 1
+    else
+      version=$(kit_kamal_config_get version "$(kit_kamal config 2>/dev/null || true)") || exit 1
+    fi
+  fi
+  [ "$skip_push" = true ] && _check_image "$version"
+
+  KIT_RUN_DIR=$(mktemp -d "${TMPDIR:-/tmp}/kit-run.XXXXXX")
+  export KIT_RUN_DIR
+  trap 'rm -rf "$KIT_RUN_DIR"' EXIT
+
+  local started=$SECONDS what who groups plain=() group_roles="" role g
+  what=$(_short_version "$version")
+  who=$(_performer)
+  groups=$(kit_group_names)
+  for g in $groups; do group_roles="$group_roles $(kit_group_roles_of "$g" | tr '\n' ' ')"; done
+  if [ -n "$groups" ]; then
+    for role in $(kit_all_roles); do
+      kit_in_list "$role" "$group_roles" || plain+=("$role")
+    done
+  fi
+  # --group: those groups alone, in the usual order; the plain roles and
+  # the other groups keep their build (and aren't rolled back either).
+  if [ -n "$only" ]; then
+    for g in $only; do
+      kit_in_list "$g" "$(printf '%s' "$groups" | tr '\n' ' ')" ||
+        kit_die "kit deploy: no group '$g' in $(kit_config_file "$(kit_conf KIT_KAMAL_CONFIG_FILE "")") (groups: $(printf '%s' "$groups" | tr '\n' ' '))"
+    done
+    local selected=""
+    for g in $groups; do
+      kit_in_list "$g" "$only" && selected="$selected$g"$'\n'
+    done
+    groups=${selected%$'\n'}
+    plain=()
+  fi
+
+  local common=()
+  [ -n "$version" ] && common+=(--version "$version")
+
+  # What runs now, for the rollback if the smoke tests fail.
+  local previous_plain="" rolling_previous="$KIT_RUN_DIR/rolling-previous"
+  : >"$rolling_previous"
+  if [ "$smoke" = true ] && [ "$rollback" = true ]; then
+    if [ -z "$groups" ]; then
+      if [ -n "$(kit_conf KIT_PRIMARY_ROLE "")" ]; then
+        previous_plain=$(kit_role_version "$(kit_conf KIT_PRIMARY_ROLE "")")
+      else
+        previous_plain=$(kit_kamal app version -H -q -p 2>/dev/null | sed '/^[[:space:]]*$/d' | head -1 || true)
+      fi
+    elif [ ${#plain[@]} -gt 0 ]; then
+      local primary
+      primary=$(kit_conf KIT_PRIMARY_ROLE "")
+      previous_plain=$(kit_role_version "${primary:-${plain[0]}}")
+    fi
+    for g in $groups; do
+      [ "$(kit_env_get KIT_GROUP_STRATEGY "$(kit_group_dir "$g")/group.env")" = standby ] && continue
+      for role in $(kit_group_roles_of "$g"); do
+        printf '%s %s\n' "$role" "$(kit_role_version "$role")" >>"$rolling_previous"
+      done
+    done
+  fi
+
+  kit_info "deploying $what${DEST:+ to $DEST}${groups:+ (groups: $(printf '%s' "$groups" | tr '\n' ' '))}"
+  kit_notify info "deploying $what, by $who"
+
+  _deploy_failed() {
+    kit_notify error "deploy of $what failed: $1 (by $who)"
+    kit_die "deploy of $what failed: $1"
+  }
+
+  if [ -z "$groups" ]; then
+    local args=()
+    [ "$skip_push" = true ] && args+=(--skip-push)
+    kit_kamal deploy ${args[@]+"${args[@]}"} ${common[@]+"${common[@]}"} ${kamal_args[@]+"${kamal_args[@]}"} ||
+      _deploy_failed "kamal deploy"
+  else
+    if [ ${#plain[@]} -gt 0 ]; then
+      local args=(-r "$(_join , "${plain[@]}")")
+      [ "$skip_push" = true ] && args+=(--skip-push)
+      kit_kamal deploy "${args[@]}" ${common[@]+"${common[@]}"} ${kamal_args[@]+"${kamal_args[@]}"} ||
+        _deploy_failed "kamal deploy of ${plain[*]}"
+    elif [ "$skip_push" != true ]; then
+      kit_kamal build deliver ${common[@]+"${common[@]}"} || _deploy_failed "building the image"
+    fi
+    for g in $groups; do
+      "$KIT_BIN" group deploy "$g" ${DEST:+-d "$DEST"} ${bootstrap[@]+"${bootstrap[@]}"} -- --skip-push \
+        ${common[@]+"${common[@]}"} ${kamal_args[@]+"${kamal_args[@]}"} || _deploy_failed "group $g"
+    done
+  fi
+
+  if [ "$smoke" = true ] && ! KIT_HOOK="" "$KIT_HOME/steps/smoke"; then
+    if [ "$rollback" != true ]; then
+      kit_notify error "deployed $what, but the smoke tests FAIL (auto-rollback off; by $who)"
+      kit_die "smoke tests failed after deploying $what (not rolled back)"
+    fi
+    _rollback_after_smoke "$previous_plain" "$rolling_previous" "$groups" ${plain[@]+"${plain[@]}"}
+    kit_notify error "deployed $what, smoke tests failed, rolled back (by $who)"
+    kit_die "smoke tests failed after deploying $what: rolled back"
+  fi
+
+  kit_ok "deployed $what in $((SECONDS - started))s"
+  kit_notify success "deployed $what in $((SECONDS - started))s, by $who"
+}
+
+# _rollback_after_smoke PREVIOUS-PLAIN ROLLING-FILE GROUPS PLAIN-ROLES...
+_rollback_after_smoke() {
+  local previous=$1 rolling=$2 groups=$3 g role v failed=0
+  shift 3
+  kit_warn "smoke tests failed: rolling back"
+  if [ -n "$previous" ]; then
+    if [ $# -gt 0 ]; then
+      kit_kamal rollback -H -r "$(_join , "$@")" "$previous" || failed=1
+    elif [ -z "$groups" ]; then
+      kit_kamal rollback -H "$previous" || failed=1
+    fi
+  elif [ $# -gt 0 ] || [ -z "$groups" ]; then
+    kit_warn "no previous version known for the plain roles (first deploy?): not rolled back"
+    failed=1
+  fi
+  for g in $groups; do
+    if [ "$(kit_env_get KIT_GROUP_STRATEGY "$(kit_group_dir "$g")/group.env")" = standby ]; then
+      "$KIT_BIN" group switch "$g" ${DEST:+-d "$DEST"} || failed=1
+    fi
+  done
+  while read -r role v; do
+    [ -n "$role" ] || continue
+    if [ -n "$v" ]; then
+      (kit_group_load "$(_group_of "$role" "$groups")" && kit_group_rollback_role "$role" "$v") || failed=1
+    fi
+  done <"$rolling"
+  [ "$failed" -eq 0 ] || kit_error "the rollback was incomplete: check \`kit group status\` and \`kamal app version\`"
+}
+
+_group_of() {
+  local role=$1 g
+  for g in $2; do
+    kit_in_list "$role" "$(kit_group_roles_of "$g" | tr '\n' ' ')" && printf '%s\n' "$g" && return
+  done
+}
+
+# ---------------------------------------------------------------- groups
+
+cmd_group() {
+  local sub=${1:-} name=""
+  [ $# -gt 0 ] && shift
+  _take_destination "$@"
+  set -- ${ARGS[@]+"${ARGS[@]}"}
+  kit_load_config "$DEST"
+  case $sub in list | "") ;; *) kit_require_kamal ;; esac
+
+  case $sub in
+    list)
+      kit_group_names_all | while read -r name; do
+        printf '%-20s %-8s %-40s %s\n' "$name" "$(kit_env_get KIT_GROUP_STRATEGY "$(kit_group_dir "$name")/group.env")" \
+          "$(kit_group_roles_of "$name" | tr '\n' ' ')" "$(kit_group_config_file "$name")"
+      done
+      ;;
+    status)
+      if [ $# -gt 0 ]; then
+        kit_group_load "$1"
+        kit_group_status
+      else
+        for name in $(kit_group_names_all); do
+          (kit_group_load "$name" && kit_group_status)
+        done
+      fi
+      ;;
+    deploy)
+      [ $# -gt 0 ] || kit_die "kit group deploy NAME"
+      name=$1 && shift
+      local bootstrap=() rest=() only=""
+      while [ $# -gt 0 ]; do
+        case $1 in
+          --bootstrap) bootstrap=(--bootstrap) ;;
+          --role)
+            [ $# -ge 2 ] || kit_die "--role needs a role"
+            only="$only $2"
+            shift
+            ;;
+          --) shift && rest=("$@") && break ;;
+          *) kit_die "kit group deploy: unknown option $1 (Kamal's own go after --)" ;;
+        esac
+        shift
+      done
+      kit_group_load "$name"
+      # --role: only these roles of the group (moving a running service
+      # into the group one role at a time, or redeploying one node). A
+      # standby group takes it only with --bootstrap: deploying its active
+      # role would stop what's collecting.
+      if [ -n "$only" ]; then
+        local r
+        for r in $only; do
+          kit_in_list "$r" "$KIT_GROUP_ROLES" || kit_die "$name has no role $r (its roles: $KIT_GROUP_ROLES)"
+        done
+        if [ "$KIT_GROUP_STRATEGY" = standby ] && [ ${#bootstrap[@]} -eq 0 ]; then
+          kit_die "--role on a standby group only with --bootstrap (the handover needs both roles)"
+        fi
+        KIT_GROUP_ROLES=${only# }
+        KIT_GROUP_STRATEGY=rolling # one by one, no handover
+      fi
+      # On its own (not within kit deploy), it owns the run: gates are asked
+      # once, and it reports the result.
+      local standalone=false
+      if [ -z "${KIT_RUN_DIR:-}" ]; then
+        standalone=true
+        KIT_RUN_DIR=$(mktemp -d "${TMPDIR:-/tmp}/kit-run.XXXXXX")
+        export KIT_RUN_DIR
+        trap 'rm -rf "$KIT_RUN_DIR"' EXIT
+      fi
+      # Images built elsewhere: pulled, never built, here too.
+      if kit_is_true "$(kit_conf KIT_DEPLOY_SKIP_PUSH false)"; then
+        case " ${rest[*]:-} " in *" --skip-push "* | *" -P "*) ;; *) rest=(--skip-push ${rest[@]+"${rest[@]}"}) ;; esac
+      fi
+      # Pulling (not building): this commit's images, unless --version says.
+      case " ${rest[*]:-} " in
+        *" --skip-push "* | *" -P "*)
+          case " ${rest[*]:-} " in
+            *" --version "* | *" --version="*) ;;
+            *)
+              local pull_version
+              pull_version=$(_pull_version) || exit 1
+              rest+=(--version "$pull_version")
+              ;;
+          esac
+          ;;
+      esac
+      kit_group_deploy ${bootstrap[@]+"${bootstrap[@]}"} ${rest[@]+"${rest[@]}"} || exit 1
+      [ "$standalone" = false ] || kit_notify success "group $name deployed, by $(_performer)"
+      ;;
+    switch)
+      [ $# -gt 0 ] || kit_die "kit group switch NAME [--to ROLE]"
+      name=$1 && shift
+      local to=""
+      if [ "${1:-}" = --to ]; then to=${2:-} && shift 2; fi
+      kit_group_load "$name"
+      kit_group_switch "$to"
+      ;;
+    *) kit_die "kit group list | status [NAME] | deploy NAME | switch NAME" ;;
+  esac
+}
+
+# --------------------------------------------------------------- helpers
+
+cmd_role_exec() {
+  _take_destination "$@"
+  set -- ${ARGS[@]+"${ARGS[@]}"}
+  [ $# -eq 2 ] || kit_die "kit role-exec ROLE 'COMMAND'"
+  kit_load_config "$DEST"
+  kit_require_kamal
+  kit_role_exec "$1" "$2"
+}
+
+cmd_smoke() {
+  _take_destination "$@"
+  kit_load_config "$DEST"
+  KIT_HOOK="" "$KIT_HOME/steps/smoke"
+}
+
+cmd_notify() {
+  _take_destination "$@"
+  set -- ${ARGS[@]+"${ARGS[@]}"}
+  [ $# -eq 2 ] || kit_die "kit notify LEVEL MESSAGE"
+  kit_load_config "$DEST"
+  kit_notify "$1" "$2"
+}
+
+cmd_freeze() {
+  local file reason
+  _take_destination "$@"
+  kit_load_config "$DEST"
+  file="$KIT_CONFIG_DIR/FREEZE${DEST:+.$DEST}"
+  reason="${ARGS[*]:-frozen by $(_performer) on $(date -u +%FT%TZ)}"
+  printf '%s\n' "$reason" >"$file"
+  kit_ok "frozen: ${file#"$KIT_PROJECT_DIR"/} (commit it to freeze for everyone; kit unfreeze to lift)"
+}
+
+cmd_unfreeze() {
+  local file
+  _take_destination "$@"
+  kit_load_config "$DEST"
+  file="$KIT_CONFIG_DIR/FREEZE${DEST:+.$DEST}"
+  if [ -f "$file" ]; then rm -f "$file" && kit_ok "unfrozen"; else kit_info "not frozen (${file#"$KIT_PROJECT_DIR"/})"; fi
+}
+
+cmd_sops() {
+  local sub=${1:-}
+  [ $# -gt 0 ] && shift
+  case $sub in
+    get) [ $# -eq 2 ] || kit_die "kit sops get FILE KEY" && kit_sops_get "$1" "$2" ;;
+    env) [ $# -eq 1 ] || kit_die "kit sops env FILE" && kit_sops_env "$1" ;;
+    decrypt-dir) [ $# -eq 1 ] || kit_die "kit sops decrypt-dir DIR" && kit_sops_decrypt_dir "$1" ;;
+    *) kit_die "kit sops get FILE KEY | env FILE | decrypt-dir DIR" ;;
+  esac
+}
+
+cmd_hook() {
+  [ $# -ge 1 ] || kit_die "kit hook NAME"
+  kit_load_config
+  kit_hook_run "$1"
+}
+
+# ------------------------------------------------------------ setting up
+
+# The files a project's vendored copy holds.
+KIT_VENDORED="bin lib steps host templates sandbox VERSION LICENSE"
+
+_vendor_into() { # SOURCE-HOME TARGET
+  local source=$1 target=$2 tmp item items
+  case $target in */.kamal/kit) ;; *) kit_die "refusing to write the kit to $target" ;; esac
+  tmp="$target.new.$$"
+  rm -rf "$tmp"
+  mkdir -p "$tmp"
+  # The list of the kit being vendored, which may name other folders than
+  # this one's.
+  items=$(sed -n 's/^KIT_VENDORED="\(.*\)"$/\1/p' "$source/bin/kit" | head -n 1)
+  for item in ${items:-$KIT_VENDORED}; do
+    [ -e "$source/$item" ] || kit_die "$source has no $item: not vendored"
+    cp -R "$source/$item" "$tmp/"
+  done
+  printf '%s\n' "Vendored deploy-kit: don't edit here, run \`kit update\`. Source: ${KIT_UPDATE_SOURCE:-$source}" >"$tmp/SOURCE"
+  rm -rf "$target"
+  mv "$tmp" "$target"
+}
+
+_shim() {
+  cat <<'EOF'
+#!/bin/sh
+# deploy-kit hook shim: runs the steps .kamal/kit.env lists for this hook.
+# Generated by `kit init`; project steps go in .kamal/hooks.d/<hook>/.
+root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+kit=${KIT_BIN:-$root/.kamal/kit/bin/kit}
+[ -x "$kit" ] || kit=$(command -v kit) || { echo "deploy-kit not found (.kamal/kit or PATH)" >&2; exit 1; }
+exec "$kit" hook "$(basename "$0")" "$@"
+EOF
+}
+
+# The presets the kit ships (templates/presets/<name>/).
+_presets() {
+  local d
+  for d in "$KIT_HOME"/templates/presets/*/; do [ -d "$d" ] && basename "$d"; done
+}
+
+cmd_init() {
+  local vendor=true force=false preset="" project dir hook file
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --no-vendor) vendor=false ;;
+      --force) force=true ;;
+      --preset)
+        [ $# -ge 2 ] || kit_die "--preset needs a name: $(_presets | tr '\n' ' ')"
+        preset=$2
+        shift
+        ;;
+      *) kit_die "kit init: unknown option $1" ;;
+    esac
+    shift
+  done
+  if [ -n "$preset" ] && [ ! -d "$KIT_HOME/templates/presets/$preset" ]; then
+    kit_die "no preset '$preset'; there are: $(_presets | tr '\n' ' ')"
+  fi
+  project=$(kit_project_dir)
+  dir="$project/.kamal"
+  if [ ! -f "$project/config/deploy.yml" ] && [ -z "$preset" ]; then
+    kit_warn "no config/deploy.yml here: run \`kamal init\` first (or ignore, if your config lives elsewhere)"
+  fi
+  if grep -qs '^hooks_path:' "$project/config/deploy.yml"; then
+    kit_warn "config/deploy.yml sets hooks_path: the shims go in .kamal/hooks; move them there or point hooks_path at it"
+  fi
+  mkdir -p "$dir/hooks" "$dir/hooks.d"
+
+  if [ "$vendor" = true ]; then
+    if [ "$KIT_HOME" = "$dir/kit" ]; then
+      kit_info "already vendored in .kamal/kit"
+    else
+      _vendor_into "$KIT_HOME" "$dir/kit"
+      kit_ok "vendored deploy-kit $(cat "$KIT_HOME/VERSION") into .kamal/kit"
+    fi
+  fi
+
+  for hook in $KIT_KAMAL_HOOKS; do
+    file="$dir/hooks/$hook"
+    if [ -f "$file" ] && ! grep -q 'deploy-kit hook shim' "$file"; then
+      if [ "$force" != true ]; then
+        mkdir -p "$dir/hooks.d/$hook"
+        mv "$file" "$dir/hooks.d/$hook/50-existing"
+        kit_warn "moved your existing .kamal/hooks/$hook to .kamal/hooks.d/$hook/50-existing (it still runs)"
+      fi
+    fi
+    rm -f "$file.sample"
+    _shim >"$file"
+    chmod +x "$file"
+  done
+  kit_ok "hook shims in .kamal/hooks"
+
+  if [ ! -f "$dir/kit.env" ] || [ "$force" = true ]; then
+    cp "$KIT_HOME/templates/project/.kamal/kit.env" "$dir/kit.env"
+    kit_ok "wrote .kamal/kit.env: read it and set what applies"
+  fi
+  [ -f "$dir/hooks.d/README.md" ] || cp "$KIT_HOME/templates/project/.kamal/hooks.d/README.md" "$dir/hooks.d/README.md"
+
+  if [ -n "$preset" ]; then
+    _init_preset "$preset" "$project" "$force"
+  fi
+
+  if ! grep -qs 'kit.local.env' "$project/.gitignore"; then
+    printf '\n# deploy-kit: personal overrides\n.kamal/kit.local.env\n' >>"$project/.gitignore"
+    kit_ok "added .kamal/kit.local.env to .gitignore"
+  fi
+
+  cat >&2 <<EOF
+
+Next:
+  1. Edit .kamal/kit.env (deploy branch, CI checks, smoke URLs, notifications).
+  2. Deploy with: .kamal/kit/bin/kit deploy   (or: kamal deploy; the gates run either way)
+  3. Groups (standby / rolling roles): see .kamal/kit/templates/groups/ and docs/groups.md.
+EOF
+}
+
+# _init_preset NAME PROJECT FORCE: the preset's files in .kamal/presets/NAME/
+# (to copy from), and its deploy.yml as config/deploy.yml when there is none.
+_init_preset() {
+  local name=$1 project=$2 force=$3 target
+  target="$project/.kamal/presets/$name"
+  if [ -d "$target" ] && [ "$force" != true ]; then
+    kit_info "preset $name already in .kamal/presets/$name (--force to replace it)"
+  else
+    rm -rf "$target"
+    mkdir -p "$target"
+    cp -R "$KIT_HOME/templates/presets/$name/." "$target/"
+    kit_ok "preset $name in .kamal/presets/$name: see its README.md"
+  fi
+  if [ -f "$KIT_HOME/templates/presets/$name/deploy.yml" ]; then
+    if [ -f "$project/config/deploy.yml" ]; then
+      kit_info "config/deploy.yml exists: merge .kamal/presets/$name/deploy.yml into it by hand"
+    else
+      mkdir -p "$project/config"
+      cp "$KIT_HOME/templates/presets/$name/deploy.yml" "$project/config/deploy.yml"
+      kit_ok "wrote config/deploy.yml from the preset: fill in its <placeholders>"
+    fi
+  fi
+}
+
+cmd_update() {
+  local from="" ref="" tmp source project
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --from) from=$2 && shift ;;
+      --ref) ref=$2 && shift ;;
+      *) kit_die "kit update: unknown option $1" ;;
+    esac
+    shift
+  done
+  project=$(kit_project_dir)
+  if [ -z "$from" ]; then
+    [ "$KIT_HOME" != "$project/.kamal/kit" ] || kit_die "run \`kit update\` from a deploy-kit checkout, or pass --from PATH|GIT-URL [--ref TAG]"
+    source=$KIT_HOME
+  elif [ -d "$from" ]; then
+    source=$(cd "$from" && pwd)
+  else
+    tmp=$(mktemp -d)
+    # The path itself, not the variable: `tmp` is gone once this function
+    # returns, before the EXIT trap runs.
+    # shellcheck disable=SC2064
+    trap "rm -rf '$tmp'" EXIT
+    git -c advice.detachedHead=false clone --quiet --depth 1 ${ref:+--branch "$ref"} "$from" "$tmp/kit" ||
+      kit_die "could not clone $from${ref:+ at $ref}"
+    source="$tmp/kit"
+    from="$from${ref:+@$ref} ($(git -C "$source" rev-parse HEAD))"
+  fi
+  if [ ! -f "$source/bin/kit" ] || [ ! -f "$source/VERSION" ]; then kit_die "$source isn't a deploy-kit"; fi
+  local old="none"
+  [ -f "$project/.kamal/kit/VERSION" ] && old=$(cat "$project/.kamal/kit/VERSION")
+  KIT_UPDATE_SOURCE=${from:-$source} _vendor_into "$source" "$project/.kamal/kit"
+  kit_ok "deploy-kit $old -> $(cat "$project/.kamal/kit/VERSION") in .kamal/kit; review the diff and commit it"
+}
+
+cmd_host() {
+  local sub=${1:-}
+  [ $# -gt 0 ] && shift
+  case $sub in
+    script) cat "$KIT_HOME/host/setup.sh" ;;
+    remote)
+      [ $# -ge 1 ] || kit_die "kit host remote USER@HOST [SETUP-ARGS...]"
+      local target=$1
+      shift
+      local quoted=""
+      [ $# -gt 0 ] && quoted=$(printf ' %q' "$@")
+      # As root, or a user with passwordless sudo (KIT_HOST_SUDO=true):
+      # the script comes on stdin, so there is no terminal for a password.
+      local shell="bash"
+      kit_is_true "${KIT_HOST_SUDO:-false}" && shell="sudo -n bash"
+      # shellcheck disable=SC2029 # expanded here, on purpose, and quoted with %q
+      ssh "$target" "$shell -s --$quoted" <"$KIT_HOME/host/setup.sh"
+      ;;
+    cloud-init) bash "$KIT_HOME/host/cloud-init.sh" "$@" ;;
+    *) kit_die "kit host script | remote USER@HOST [ARGS] | cloud-init [ARGS]" ;;
+  esac
+}
+
+cmd_kamal() {
+  _take_destination "$@"
+  kit_load_config "$DEST"
+  kit_require_kamal
+  kit_kamal ${ARGS[@]+"${ARGS[@]}"}
+}
+
+cmd_doctor() {
+  local problems=0 tool g
+  _take_destination "$@"
+  kit_load_config "$DEST"
+  _check() { if "$@" >/dev/null 2>&1; then return 0; fi; problems=$((problems + 1)); return 1; }
+
+  printf 'deploy-kit %s (%s)\n' "$(cat "$KIT_HOME/VERSION")" "$KIT_HOME"
+  if [ -n "${KIT_IN_RUNNER:-}" ]; then
+    printf "running in the kit's image (KIT_RUNNER=docker)\n"
+  fi
+  printf 'bash %s\n' "$BASH_VERSION"
+  for tool in git curl; do
+    if _check command -v "$tool"; then kit_ok "$tool"; else kit_error "$tool missing"; fi
+  done
+  local kamal=()
+  read -r -a kamal <<<"$(kit_conf KIT_KAMAL kamal)"
+  if _check command -v "${kamal[0]}"; then kit_ok "kamal: $("${kamal[@]}" version 2>/dev/null || echo '?')"; else kit_error "kamal missing (${kamal[*]})"; fi
+
+  local steps
+  steps="$(kit_conf KIT_HOOK_PRE_BUILD) $(kit_conf KIT_HOOK_PRE_DEPLOY)"
+  if kit_in_list ci-green "$steps" || kit_in_list attestation "$steps"; then
+    if _check gh auth status; then kit_ok "gh logged in"; else kit_error "gh missing or not logged in (needed by ci-green/attestation)"; fi
+  fi
+  if grep -ls 'kit sops' "$KIT_PROJECT_DIR"/.kamal/secrets* >/dev/null 2>&1; then
+    if _check command -v sops; then kit_ok "sops"; else kit_error "sops missing (.kamal/secrets uses kit sops)"; fi
+  fi
+
+  for g in $KIT_KAMAL_HOOKS; do
+    if ! grep -qs 'deploy-kit hook shim' "$KIT_CONFIG_DIR/hooks/$g"; then
+      kit_warn "no shim for $g in .kamal/hooks (kit init)"
+      problems=$((problems + 1))
+    fi
+  done
+
+  for g in $(kit_group_names_all); do
+    if (kit_group_load "$g") 2>/dev/null; then kit_ok "group $g"; else
+      kit_error "group $g: $( (kit_group_load "$g") 2>&1 | tail -1)"
+      problems=$((problems + 1))
+    fi
+  done
+
+  if [ -z "$(kit_conf KIT_NOTIFY "")$(_kit_notify_configured)" ]; then
+    kit_warn "no notification channel configured: failures are only printed"
+  fi
+  [ -n "$(kit_conf KIT_SMOKE_URLS "")" ] || kit_warn "no KIT_SMOKE_URLS${DEST:+ for $DEST}: deploys aren't checked from outside, and can't auto-rollback"
+
+  if [ "$problems" -gt 0 ]; then
+    kit_error "$problems problem(s)"
+    return 1
+  fi
+  kit_ok "no problems found"
+}
+
+# --------------------------------------------------------------- sandbox
+
+cmd_sandbox() {
+  local sub=${1:-help}
+  [ $# -gt 0 ] && shift
+  case $sub in
+    help | -h | --help)
+      cat <<'USAGE'
+kit sandbox: this project's deploy path, on this machine (docs/sandbox.md)
+  kit sandbox init                 .kamal/sandbox/ and a sandbox overlay per Kamal config
+  kit sandbox up                   build the working tree, start everything, first deploy
+  kit sandbox deploy [ARGS...]     build the working tree and deploy it (kit deploy's ARGS: --group, -c...)
+  kit sandbox status               groups, containers, the project's URLs
+  kit sandbox logs ROLE [-f]       a role's logs
+  kit sandbox exec ROLE CMD...     a command in a role's container
+  kit sandbox kit ARGS...          any kit command, aimed at the sandbox
+  kit sandbox down                 stop it, keep its data
+  kit sandbox reset [--yes]        remove it and its data
+USAGE
+      return 0
+      ;;
+  esac
+  kit_sandbox_load
+  case $sub in init) ;; *) kit_require_docker ;; esac
+  case $sub in
+    init) kit_sandbox_init ;;
+    up) kit_sandbox_up ;;
+    deploy) kit_sandbox_deploy "$@" ;;
+    status) kit_sandbox_status ;;
+    logs)
+      [ $# -ge 1 ] || kit_die "kit sandbox logs ROLE [-f]"
+      local role=$1 follow=()
+      shift
+      [ "${1:-}" = -f ] && follow=(-f)
+      _sbx_docker logs --tail 200 ${follow[@]+"${follow[@]}"} "$(kit_sandbox_role_container "$role")"
+      ;;
+    exec)
+      [ $# -ge 2 ] || kit_die "kit sandbox exec ROLE CMD..."
+      local id tty=()
+      id=$(kit_sandbox_role_container "$1")
+      shift
+      [ -t 0 ] && [ -t 1 ] && tty=(-it)
+      _sbx_docker exec ${tty[@]+"${tty[@]}"} "$id" "$@"
+      ;;
+    kit)
+      [ $# -ge 1 ] || kit_die "kit sandbox kit ARGS..."
+      local config
+      for config in $(kit_sandbox_configs); do kit_sandbox_check_target "$config"; done
+      kit_sandbox_kit "$@"
+      ;;
+    down) kit_sandbox_down ;;
+    reset)
+      if [ "${1:-}" != --yes ]; then
+        if [ -t 0 ]; then
+          printf 'Remove the sandbox, its containers, the images in its registry and its data? [y/N] ' >&2
+          local answer
+          read -r answer
+          [ "$answer" = y ] || kit_die "not reset"
+        else
+          kit_die "kit sandbox reset --yes (it removes the sandbox and its data)"
+        fi
+      fi
+      kit_sandbox_reset
+      ;;
+    *) kit_die "kit sandbox: unknown command $sub (kit sandbox help)" ;;
+  esac
+}
+
+# ------------------------------------------------------------------ main
+
+main() {
+  local cmd=${1:-help}
+  [ $# -gt 0 ] && shift
+  # KIT_RUNNER=docker: the commands running Kamal run in the kit's image.
+  kit_runner_maybe_exec "$cmd" "$@"
+  case $cmd in
+    deploy) cmd_deploy "$@" ;;
+    kamal) cmd_kamal "$@" ;;
+    group) cmd_group "$@" ;;
+    role-exec) cmd_role_exec "$@" ;;
+    smoke) cmd_smoke "$@" ;;
+    notify) cmd_notify "$@" ;;
+    ping) kit_ping "${1:-}" ;;
+    freeze) cmd_freeze "$@" ;;
+    unfreeze) cmd_unfreeze "$@" ;;
+    sops) cmd_sops "$@" ;;
+    hook) cmd_hook "$@" ;;
+    init) cmd_init "$@" ;;
+    update) cmd_update "$@" ;;
+    host) cmd_host "$@" ;;
+    doctor) cmd_doctor "$@" ;;
+    sandbox) cmd_sandbox "$@" ;;
+    version | --version) cat "$KIT_HOME/VERSION" ;;
+    help | -h | --help) usage ;;
+    *) usage >&2 && exit 2 ;;
+  esac
+}
+
+main "$@"

@@ -1,0 +1,20 @@
+# Dev (kit deploy -d dev, from the dev branch): dev.betterchat.tech, with its own stats and admin login, never
+# production's. Merged over config/deploy.yml. On the server, /opt/betterchat-dev/app.env holds the admin login
+# (deploy/app.env.example), with values different from production.
+
+servers:
+  web:
+    options:
+      env-file: /opt/betterchat-dev/app.env
+
+proxy:
+  host: dev.betterchat.tech
+
+env:
+  clear:
+    FRAME_ANCESTORS: "'self' https://kick.com"
+    # Nothing reports to dev: its page posts heartbeats to production's board.
+    BEAT_ORIGINS: ""
+
+volumes:
+  - betterchat-dev-data:/app/data

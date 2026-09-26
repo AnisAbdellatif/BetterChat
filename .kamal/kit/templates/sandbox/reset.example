@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# kit sandbox reset: your services and their data, gone.
+set -euo pipefail
+docker compose -p "$KIT_SANDBOX_NAME-sandbox" -f .kamal/sandbox/compose.yml down -v

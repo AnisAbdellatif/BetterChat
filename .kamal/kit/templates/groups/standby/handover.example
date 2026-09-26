@@ -1,0 +1,7 @@
+#!/bin/sh
+# Rename to `handover` to replace the default, which restarts $KIT_FROM in
+# place on its own build ($KIT_FROM_VERSION): its clean stop releases the
+# lease, which the healthy $KIT_TO takes. Use this when the app offers a
+# better way, e.g. an endpoint that steps down without a restart.
+set -e
+"$KIT" role-exec "$KIT_FROM" "curl -fsS -X POST http://127.0.0.1:4000/step-down"

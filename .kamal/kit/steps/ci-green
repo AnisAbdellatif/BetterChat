@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# The commit being deployed passed CI on GitHub (checks and commit
+# statuses, through `gh`). KIT_CI_REQUIRED: names that must be present and
+# pass (else every check present must pass, and there must be at least one,
+# unless KIT_CI_ALLOW_NONE). KIT_CI_IGNORE: names never looked at.
+# KIT_CI_WAIT: seconds to wait for checks still running.
+. "$(dirname "$0")/_preamble.sh"
+
+# kit sandbox: local, nothing to check against GitHub, the branch or a freeze.
+if [ -n "${KIT_SANDBOX:-}" ]; then
+  kit_info "sandbox: ci-green skipped"
+  exit 0
+fi
+
+kit_require gh "GitHub's CLI, logged in: gh auth login"
+version=$(kit_version_being_deployed)
+case $version in
+  *_uncommitted_*) kit_die "version $version has uncommitted changes: CI never saw them" ;;
+esac
+kit_is_sha "$version" || kit_die "version '$version' isn't a commit id; ci-green needs Kamal's default (git) versions"
+
+repo=$(kit_conf KIT_GITHUB_REPO "")
+[ -n "$repo" ] || repo=$(cd "$KIT_PROJECT_DIR" && gh repo view --json nameWithOwner -q .nameWithOwner) ||
+  kit_die "could not tell the GitHub repository: set KIT_GITHUB_REPO=owner/repo"
+
+required=$(kit_conf KIT_CI_REQUIRED "")
+ignored=$(kit_conf KIT_CI_IGNORE "")
+wait=$(kit_conf KIT_CI_WAIT 0)
+poll=$(kit_conf KIT_CI_POLL 15)
+
+# One line per check: <name>\t<state>, state being pass, fail or pending.
+results() {
+  gh api "repos/$repo/commits/$version/check-runs?filter=latest&per_page=100" --paginate \
+    --jq '.check_runs[] | [.name, (if .status != "completed" then "pending"
+      elif (.conclusion == "success" or .conclusion == "skipped" or .conclusion == "neutral") then "pass"
+      else "fail" end)] | @tsv' &&
+    gh api "repos/$repo/commits/$version/status" \
+      --jq '.statuses[] | [.context, (if .state == "success" then "pass" elif .state == "pending" then "pending" else "fail" end)] | @tsv'
+}
+
+# Prints a verdict (pass, fail, pending) and the lines that decided it.
+evaluate() {
+  local lines name state failing="" pending="" seen="" req
+  lines=$(results) || { echo "error"; return; }
+  while IFS=$'\t' read -r name state; do
+    [ -n "$name" ] || continue
+    kit_in_list "$name" "$ignored" && continue
+    seen="$seen|$name|"
+    if [ -n "$required" ] && ! kit_in_list "$name" "$required"; then continue; fi
+    case $state in
+      fail) failing="$failing, $name" ;;
+      pending) pending="$pending, $name" ;;
+    esac
+  done <<<"$lines"
+  for req in $(kit_words "$required"); do
+    case $seen in *"|$req|"*) ;; *) pending="$pending, $req (not reported yet)" ;; esac
+  done
+  if [ -n "$failing" ]; then
+    echo "fail${failing#,}"
+  elif [ -n "$pending" ]; then
+    echo "pending${pending#,}"
+  elif [ -z "$seen" ] && ! kit_is_true "$(kit_conf KIT_CI_ALLOW_NONE false)"; then
+    echo "none"
+  else
+    echo "pass"
+  fi
+}
+
+deadline=$((SECONDS + wait))
+while :; do
+  verdict=$(evaluate)
+  case $verdict in
+    pass) kit_ok "CI passed for ${version:0:12} ($repo)" && exit 0 ;;
+    error) kit_die "could not read CI results for $version from GitHub (gh auth status?)" ;;
+    none) kit_gate_die "no CI results for ${version:0:12} on $repo (pushed? KIT_CI_ALLOW_NONE=true to allow)" ;;
+    fail*) kit_gate_die "CI failed for ${version:0:12}:${verdict#fail}" ;;
+    pending*)
+      if [ "$SECONDS" -ge "$deadline" ]; then
+        kit_gate_die "CI hasn't finished for ${version:0:12}:${verdict#pending} (KIT_CI_WAIT=<seconds> to wait)"
+      fi
+      kit_info "CI still running:${verdict#pending}; checking again in ${poll}s"
+      sleep "$poll"
+      ;;
+  esac
+done

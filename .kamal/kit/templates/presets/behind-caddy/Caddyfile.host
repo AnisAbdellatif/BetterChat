@@ -1,0 +1,16 @@
+# The host's Caddy (/etc/caddy/Caddyfile, or a file it imports), in front
+# of kamal-proxy (deploy-kit preset "behind-caddy"). Caddy gets the
+# certificate and terminates TLS; it keeps the Host header by default,
+# which is what kamal-proxy routes on. After a change:
+#   caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy
+<app.example.com> {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+	# kamal-proxy's HTTP port on loopback (proxy.run in config/deploy.yml).
+	reverse_proxy 127.0.0.1:8080
+}

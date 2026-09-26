@@ -1,0 +1,53 @@
+# Optional: CI builds and pushes the image (instead of `kamal deploy`
+# building it on your machine), and signs where it came from. Deploy it
+# with `kit deploy --skip-push`; the `attestation` step then refuses any
+# image this workflow didn't build (docs/security.md). Copy to
+# .github/workflows/build.yml.
+#
+# The image is tagged with the full commit SHA, which is the version Kamal
+# deploys by default.
+name: Build
+
+on:
+  push:
+    # The branches you deploy from (KIT_DEPLOY_BRANCH, per destination):
+    # add dev for a staging that deploys it (docs/branches.md).
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write        # push to GHCR with the job's own token
+      id-token: write        # sign the provenance (Sigstore, keyless)
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # GHCR names are lower case; the repository's may not be. Must match
+      # `image:` in config/deploy.yml and KIT_IMAGE.
+      - run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: true
+          # Kamal labels the images it runs by service; keep in step with
+          # `service:` in config/deploy.yml.
+          labels: service=${{ github.event.repository.name }}
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true

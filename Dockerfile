@@ -1,6 +1,9 @@
 # BetterChat: the chat site + admin/stats server, one container.
 #
-#   docker compose up -d --build      (see docker-compose.yml + .env.example)
+#   docker compose up -d --build      (locally: docker-compose.yml + .env.example)
+#
+# Deployed images are built by CI (.github/workflows/ci.yml) and run by Kamal
+# (config/deploy.yml), which also checks /health before switching traffic.
 #
 # No apt-get anywhere: the uv base image already has Python, and every
 # dependency is a pure wheel.

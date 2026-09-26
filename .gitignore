@@ -14,3 +14,9 @@ node_modules/
 .claude/
 .DS_Store
 Thumbs.db
+
+# deploy-kit: personal overrides
+.kamal/kit.local.env
+
+# The admin login lives on the VPS only (deploy/app.env.example)
+app.env

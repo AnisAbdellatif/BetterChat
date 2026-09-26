@@ -5,7 +5,7 @@ example `/xqc`) and the page talks to Kick directly from the browser: it
 resolves the channel over Kick's REST API and subscribes to Kick's Pusher
 feed itself. A small Python server (FastAPI, run with uv) hands out the
 page and carries an admin board. One process, one hostname, published from
-a homelab through a Cloudflare Tunnel.
+a VPS with Kamal (see "Deploying").
 
 **The page sends nothing back unless the viewer agrees to it.** The
 heartbeats that feed the board's viewer counts are opt-in: the first visit
@@ -28,6 +28,9 @@ site/          the chat page: index.html, app.js, settings.js, defaults.json, ki
                config.js, sw.js, privacy.html
 betterchat/    the server: main.py (routes), stats.py (heartbeats -> stats), admin.html
 tests/         pytest (server) + node --test (kick.js, settings.js)
+config/        Kamal's deploy config (production and dev destinations)
+.kamal/        deploy-kit: the vendored kit, its settings and hook shims
+deploy/        the host's Caddy site blocks, the server's env file template
 pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
 ```
 
@@ -309,120 +312,127 @@ refusal, so an older extension that does not know a message type leaves the
 feature off rather than hanging. `canReply` is what keeps the reply button
 away from an extension too old to send one.
 
-## Publishing (homelab + Cloudflare Tunnel)
+## Deploying
 
-```bash
-cp .env.example .env         # ADMIN_USER / ADMIN_PASSWORD
-docker compose up -d --build
+The `Dockerfile` builds one image. [Kamal](https://kamal-deploy.org) runs it
+on the VPS, and [deploy-kit](https://github.com/AnisAbdellatif/deploy-kit)
+(vendored in `.kamal/kit`, version in `.kamal/kit/VERSION`) adds the checks
+before a deploy, the smoke tests after it and the rollback. The host's own
+Caddy obtains the certificates and forwards both domains to kamal-proxy on
+`127.0.0.1:8080`, which routes by domain and swaps the container with no
+downtime: it waits for the new one's `/health` before moving traffic, so a
+deploy no longer means a few seconds of 502.
+
+```
+Internet ─443─► Caddy (host, TLS) ─► 127.0.0.1:8080 kamal-proxy ─► BetterChat
 ```
 
-Then set the tunnel's public hostname `betterchat.tech` to
-`http://localhost:8010` (or the `HOST_PORT` you set in `.env`; the
-container itself always listens on 8010). That one origin serves the chat,
-receives the heartbeats, and hosts `/admin`. The image is built from
-`ghcr.io/astral-sh/uv:python3.12-bookworm-slim` with no apt-get at all;
-stats persist on the `betterchat-data` volume.
-
-`/admin` is Basic Auth over the tunnel's TLS. A Cloudflare Access policy on
-`/admin*` in front of it is free and worth adding.
-
-## Deploying on a push
-
-`.github/workflows/deploy.yml` runs the tests on GitHub's runners and, if they
-pass, pulls and rebuilds on the VPS. The deploy half runs on a **self-hosted
-runner installed on the VPS itself**, which dials out to GitHub for its work,
-so there is no inbound port to open, no SSH key to hand to GitHub, and nothing
-to change in Oracle's security list. It does what deploying by hand did, in
-the clone already on the box, so the `.env` beside it and the compose project
-name - and with it the `betterchat-data` volume - are untouched.
-
-Set it up once, as a normal user on the VPS (not root):
+CI (`.github/workflows/ci.yml`) tests every push. For pushes to `master` and
+`dev` it also builds the image, pushes it as
+`ghcr.io/anisabdellatif/betterchat:<commit sha>` and signs a build
+attestation. CI deploys nothing and holds no SSH key or secret. A person
+deploys:
 
 ```bash
-# The runner needs to own the clone and be able to talk to Docker.
-sudo chown -R "$USER" /opt/betterchat
-sudo usermod -aG docker "$USER"   # log out and back in for this to take
-
-mkdir -p ~/actions-runner && cd ~/actions-runner
-# Take the current URL from GitHub: repo -> Settings -> Actions -> Runners
-# -> New self-hosted runner (Linux, and pick x64 or ARM64 to match the VPS).
-curl -o runner.tar.gz -L <url from that page>
-tar xzf runner.tar.gz
-./config.sh --url https://github.com/AnisAbdellatif/BetterChat \
-            --token <token from that page> --labels betterchat
-sudo ./svc.sh install "$USER"     # run it as a service, not in your shell
-sudo ./svc.sh start
+git switch dev && .kamal/kit/bin/kit deploy -d dev
+git switch master && git pull && .kamal/kit/bin/kit deploy -d production
 ```
 
-The `betterchat` label is what the workflow asks for, so the name has to
-match. If the clone lives somewhere other than `/opt/betterchat`, set a
-repository variable `DEPLOY_DIR` to its path rather than editing the
-workflow.
+Before anything changes on the server, `kit deploy` checks that deploys
+aren't frozen, that the checkout is on the destination's branch, clean and
+pushed, and that the image was built and attested by this repository's CI.
+Production also needs CI green for that exact commit (it waits up to 15
+minutes for a run still going) and asks you to type its name. After the
+swap, the smoke tests fetch the public URLs through Caddy, and a failure
+rolls back to the previous version. A gate that refuses says how to go past
+it once, on purpose (`KIT_SKIP=<step> KIT_SKIP_REASON="…"`).
 
-After that, a push to `master` deploys. The Actions tab shows each run, the
-"Deploy" workflow can be re-run by hand from there, and the job fails loudly
-if the container does not come up healthy - it waits on the image's own
-`HEALTHCHECK` rather than guessing at timing. Two deploys never overlap: a
-push landing mid-build queues behind it instead of cancelling it.
+| Destination | Branch | Kamal config | Admin login on the VPS | Stats volume | Address |
+|---|---|---|---|---|---|
+| `production` | `master` | `config/deploy.yml` + `config/deploy.production.yml` | `/opt/betterchat/app.env` | `betterchat-data` | betterchat.tech |
+| `dev` | `dev` | `config/deploy.yml` + `config/deploy.dev.yml` | `/opt/betterchat-dev/app.env` | `betterchat-dev-data` | dev.betterchat.tech |
 
-Worth knowing: the pull is `--ff-only`, so if the checkout on the box has been
-edited by hand the deploy stops and says so instead of inventing a merge
-commit on a server. Old image layers are pruned after every run, which on a
-small boot volume matters more than it sounds. The container restarts during
-the rebuild, so expect a few seconds of 502 through the tunnel.
+The kit's settings are in `.kamal/kit.env`. Kamal runs in the kit's image
+(`KIT_RUNNER=docker`), so the machine that deploys needs only bash, git,
+Docker and a logged-in `gh`.
+
+One-time setup:
+
+1. On the VPS (the one the other Kamal apps already run on): a deploy user
+   in the `docker` group with your SSH key. Create `/opt/betterchat` and
+   `/opt/betterchat-dev`, owned by the deploy user, each with a filled-in
+   `app.env` (`deploy/app.env.example`; `chmod 600`, no quotes around
+   values, a different login for dev). Copy `deploy/betterchat.site` to
+   `/etc/caddy/`, add `import betterchat.site` to `/etc/caddy/Caddyfile`
+   and reload Caddy.
+2. On the machine that deploys: copy `.kamal/kit.local.env.example` to
+   `.kamal/kit.local.env` and fill in the server (`BC_HOST`) and a GitHub
+   token with only `read:packages` (`KAMAL_REGISTRY_PASSWORD`; the server
+   logs in to ghcr.io with it). Then `.kamal/kit/bin/kit doctor -d production`.
+
+Moving from the Oracle box and its Cloudflare Tunnel (once; production
+shown, dev is the same with `betterchat-dev` / `betterchat-dev-data`, or
+skip it and let dev start with empty stats):
+
+1. On the Oracle box, stop the stack and take the stats out:
+   `cd /opt/betterchat && docker compose down` (no `-v`), then
+   `docker run --rm -v betterchat_betterchat-data:/d alpine cat /d/stats.json > stats.json`.
+2. On the VPS, put them in the volume Kamal will mount, owned by the
+   container's user (`nobody`):
+   `docker volume create betterchat-data && docker run --rm -i -v betterchat-data:/d alpine sh -c 'cat > /d/stats.json && chown -R 65534:65534 /d' < stats.json`.
+3. In Cloudflare: remove the tunnel's public hostname for the domain and
+   replace its DNS record with an `A` record to the VPS. Keep it proxied
+   (orange): Cloudflare's caching and Access stay, and the privacy policy
+   says traffic reaches the server through Cloudflare. Set SSL/TLS to Full
+   (strict). If Caddy can't get its certificate through the proxy, switch
+   the record to DNS only until it has one.
+4. Deploy: `.kamal/kit/bin/kit deploy -d production`. The first deploy
+   also starts kamal-proxy, if no other app on the server has yet.
+5. When both work, clean up what the old deploy used: on the Oracle box,
+   the self-hosted runner (`cd ~/actions-runner && sudo ./svc.sh stop && sudo ./svc.sh uninstall && ./config.sh remove --token <token>`),
+   the checkouts and volumes, and `cloudflared` if nothing else uses it;
+   on GitHub, the runner (Settings → Actions → Runners) and the
+   `DEPLOY_DIR` / `DEPLOY_DIR_DEV` repository variables.
+
+Day to day:
+
+- Rolling back: `.kamal/kit/bin/kit kamal rollback <older commit sha> -d production`.
+  Kamal keeps the last few containers on the server.
+- Stopping deploys: `.kamal/kit/bin/kit freeze -d production "reason"`,
+  then `kit unfreeze -d production`.
+- Logs and a shell: `.kamal/kit/bin/kit kamal app logs -d production`,
+  `kit kamal app exec -i -d production sh`.
+- A changed `app.env` takes effect with the next deploy, or at once with
+  `kit kamal app boot -d production`.
+- Updating deploy-kit: `.kamal/kit/bin/kit update --from https://github.com/AnisAbdellatif/deploy-kit --ref <tag>`,
+  then review and commit the diff in `.kamal/kit`.
+
+`/admin` is Basic Auth over Caddy's TLS. A Cloudflare Access policy on
+`/admin*` in front of it is free and worth adding, and one in front of all
+of dev.betterchat.tech: a dev build should not be something strangers can
+find.
 
 ## Two branches, two instances
 
 `master` is stable and is the only thing that reaches `betterchat.tech`. Work
 happens on `dev`, which deploys to a **second instance on the same VPS** and
-cannot disturb the first one.
+cannot disturb the first one: its own Kamal destination, container, data
+volume and admin login. Both run the same kind of image, tagged by commit,
+so one can never come up on the other's code.
 
-They are separate in every way that matters: their own checkout, their own
-compose project, their own container, their own data volume, their own image
-tag and their own port. Nothing is shared but the host and the runner, and the
-runner takes one job at a time, so the two deploys cannot even overlap.
+Dev deploys deliberately don't wait for the tests: dev is where half-finished
+work goes to be tried in a real browser, and having to be green first would
+defeat the point. The image still has to exist and come up healthy, and the
+smoke test still runs, so a build that cannot boot is refused or rolled back
+either way.
 
 One thing is deliberately shared: **the admin board**. The dev page posts its
 heartbeats to the stable origin rather than to its own instance, tagged
 `build: "dev"`, so a single board answers "who is watching" for both and shows
-the split. That needs `BEAT_ORIGINS=https://dev.betterchat.tech` in the stable
-`.env`; the dev instance leaves it empty, since nothing reports to dev. Dev
-viewers do count toward the shared totals, which is fine when dev is you
-testing and worth remembering if it ever gets busier.
-
-The image tag is the part that is easy to get wrong. With a fixed
-`betterchat:local`, a dev build would move the tag that production's *next*
-restart resolves, and production would quietly come back up running dev's
-code - days later, with nothing in the logs to say why. `IMAGE_TAG` in `.env`
-is what prevents that.
-
-Set the dev instance up once, beside the production one:
-
-```bash
-git clone https://github.com/AnisAbdellatif/BetterChat.git /opt/betterchat-dev
-cd /opt/betterchat-dev && git checkout dev
-cp .env.example .env
-```
-
-Then in that `.env` set `COMPOSE_PROJECT_NAME=betterchat-dev`, `IMAGE_TAG=dev`,
-`HOST_PORT=8011`, and its own `ADMIN_USER` / `ADMIN_PASSWORD`. Bring it up once
-by hand (`docker compose up -d --build`), point a second tunnel hostname such
-as `dev.betterchat.tech` at `http://localhost:8011`, and **put a Cloudflare
-Access policy in front of it** - a dev build should not be something strangers
-can find. If the clone goes somewhere else, set the repository variable
-`DEPLOY_DIR_DEV` to its path.
-
-After that, a push to `dev` deploys there. The deploy logic itself lives in
-one place, `_deploy.yml`, which both branches call with a different directory.
-Two differences between them are deliberate:
-
-- **Production waits for the tests, dev does not.** Dev is where half-finished
-  work goes to be tried in a real browser, and having to be green first would
-  defeat the point. Both still have to come up healthy, so a build that cannot
-  boot fails loudly either way.
-- **Each deploy checks the branch of the checkout it is about to touch** and
-  refuses if it does not match the branch that was pushed, so a mix-up in
-  `DEPLOY_DIR` cannot drag production onto `dev`.
+the split. That is `BEAT_ORIGINS=https://dev.betterchat.tech` in
+`config/deploy.production.yml`; dev leaves it empty, since nothing reports to
+dev. Dev viewers do count toward the shared totals, which is fine when dev is
+you testing and worth remembering if it ever gets busier.
 
 To point the extension at the dev instance, change `BCK_BASE_URL` in a local
 copy of `defaults.js` and load that copy unpacked. The origin is fixed in the

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Exit 0 if $KIT_ROLE answers. Without this file, "its container is running"
+# is all that's checked.
+"$KIT" role-exec "$KIT_ROLE" "curl -fsS http://127.0.0.1:4060/health" >/dev/null
