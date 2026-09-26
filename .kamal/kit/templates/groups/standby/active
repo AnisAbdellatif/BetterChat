@@ -1,0 +1,4 @@
+#!/bin/sh
+# Exit 0 if $KIT_ROLE is the active one. Ask the app itself: here, a status
+# endpoint inside the container that reports "leader" or "standby".
+"$KIT" role-exec "$KIT_ROLE" "curl -fsS http://127.0.0.1:4000/status" | grep -q '"role":"leader"'

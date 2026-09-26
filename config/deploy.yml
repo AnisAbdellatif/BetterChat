@@ -1,0 +1,69 @@
+# Kamal config for BetterChat, deployed with deploy-kit (.kamal/, preset "behind-caddy"): what production and dev
+# share. Each has its own destination, config/deploy.production.yml and config/deploy.dev.yml, and a deploy always
+# names one: `kit deploy -d dev` from the dev branch, `kit deploy -d production` from master (README, "Deploying").
+#
+#   Internet ─443─► the host's Caddy (TLS) ─► 127.0.0.1:8080 kamal-proxy ─► the app
+#
+# The server comes from the environment (.kamal/kit.local.env, git-ignored; the kit exports it): BC_HOST, and
+# BC_SSH_USER / BC_SSH_PORT when they aren't deploy / 22. The admin login stays on the server, in an env file per
+# destination that Docker hands to the container; it never passes through the machine that deploys.
+<%
+  host = ENV["BC_HOST"].to_s.strip
+  raise "BC_HOST isn't set: put the server in .kamal/kit.local.env" if host.empty?
+%>
+service: betterchat
+image: anisabdellatif/betterchat
+
+# `kamal deploy` without -d would have no domain and no data volume: refused.
+require_destination: true
+
+# The destinations add the env file; the host is shared.
+servers:
+  web:
+    hosts: [<%= host %>]
+
+proxy:
+  # kamal-proxy routes on the Host header Caddy passes on; each destination sets its domain.
+  # The port the server listens on inside its container (Dockerfile).
+  app_port: 8010
+  # Caddy terminates TLS; kamal-proxy speaks plain HTTP to it.
+  ssl: false
+  # Keep Caddy's X-Forwarded-Proto: uvicorn trusts it (proxy_headers in betterchat/main.py).
+  forward_headers: true
+  # kamal-proxy moves traffic to a new container once this answers 200.
+  healthcheck:
+    path: /health
+    interval: 3
+    timeout: 3
+  # kamal-proxy itself: ONE container per server, shared by every Kamal app deployed there, so every project on
+  # this server must use this same `run` block. Loopback only: Caddy is the single way in.
+  run:
+    http_port: 8080
+    https_port: 8443
+    bind_ips: [127.0.0.1]
+
+env:
+  clear:
+    # The container always listens on 8010 (Dockerfile EXPOSE + healthcheck).
+    PORT: "8010"
+
+# Built, labelled and attested by CI (.github/workflows/ci.yml, job "image") for every push to master and dev,
+# tagged with the commit; a deploy pulls it and never builds (KIT_DEPLOY_SKIP_PUSH in .kamal/kit.env).
+registry:
+  server: ghcr.io
+  username: anisabdellatif
+  password: [KAMAL_REGISTRY_PASSWORD]
+
+builder:
+  arch: amd64
+
+ssh:
+  user: <%= ENV.fetch("BC_SSH_USER", "deploy") %>
+  port: <%= ENV.fetch("BC_SSH_PORT", "22") %>
+
+# Container logs are rotated at 3 x 10 MB, so they don't grow forever.
+logging:
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"

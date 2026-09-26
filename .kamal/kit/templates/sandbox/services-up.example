@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# What Kamal doesn't run, started (again) before deploys: here a database
+# with compose, on Kamal's Docker network so the app reaches it as `db`.
+# Keep the project name and volumes the sandbox's own (KIT_SANDBOX_NAME).
+set -euo pipefail
+docker network inspect kamal >/dev/null 2>&1 || docker network create kamal >/dev/null
+docker compose -p "$KIT_SANDBOX_NAME-sandbox" -f .kamal/sandbox/compose.yml up -d --wait

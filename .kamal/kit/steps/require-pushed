@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# The commit is on the remote deploy branch, so what runs is what everyone
+# can see. KIT_PUSHED_MODE=contained (default): HEAD is on the remote
+# branch; tip: HEAD is exactly its tip.
+. "$(dirname "$0")/_preamble.sh"
+
+# kit sandbox: local, nothing to check against GitHub, the branch or a freeze.
+if [ -n "${KIT_SANDBOX:-}" ]; then
+  kit_info "sandbox: require-pushed skipped"
+  exit 0
+fi
+
+kit_is_rollback && exit 0
+remote=$(kit_conf KIT_GIT_REMOTE origin)
+mode=$(kit_conf KIT_PUSHED_MODE contained)
+branch=$(git -C "$KIT_PROJECT_DIR" symbolic-ref --quiet --short HEAD || true)
+[ -n "$branch" ] || kit_gate_die "not on a branch (detached HEAD)"
+git -C "$KIT_PROJECT_DIR" fetch --quiet "$remote" "$branch" || kit_die "could not fetch $remote/$branch"
+head=$(git -C "$KIT_PROJECT_DIR" rev-parse HEAD)
+tip=$(git -C "$KIT_PROJECT_DIR" rev-parse "$remote/$branch")
+case $mode in
+  tip) [ "$head" = "$tip" ] || kit_gate_die "HEAD ($head) isn't the tip of $remote/$branch ($tip): push or pull first" ;;
+  contained) git -C "$KIT_PROJECT_DIR" merge-base --is-ancestor "$head" "$tip" ||
+    kit_gate_die "HEAD ($head) isn't on $remote/$branch: push it first" ;;
+  *) kit_die "KIT_PUSHED_MODE must be contained or tip (is '$mode')" ;;
+esac
+kit_ok "pushed to $remote/$branch"

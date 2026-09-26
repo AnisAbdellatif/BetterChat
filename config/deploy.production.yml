@@ -1,0 +1,21 @@
+# Production (kit deploy -d production, from master): betterchat.tech. Merged over config/deploy.yml.
+# On the server, /opt/betterchat/app.env holds the admin login (deploy/app.env.example).
+
+servers:
+  web:
+    options:
+      env-file: /opt/betterchat/app.env
+
+proxy:
+  host: betterchat.tech
+
+env:
+  clear:
+    # Who may frame the chat page: the extension embeds it in kick.com.
+    FRAME_ANCESTORS: "'self' https://kick.com"
+    # The dev page reports its heartbeats here, so one board shows both (README, "Two branches, two instances").
+    BEAT_ORIGINS: https://dev.betterchat.tech
+
+# The stats, kept across deploys.
+volumes:
+  - betterchat-data:/app/data

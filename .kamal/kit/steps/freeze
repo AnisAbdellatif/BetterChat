@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Refuses to deploy while frozen: KIT_FREEZE=true, or a file .kamal/FREEZE
+# (all destinations) or .kamal/FREEZE.<destination>, whose content is shown
+# as the reason. Rollbacks stay allowed (KIT_FREEZE_ALLOWS_ROLLBACK).
+. "$(dirname "$0")/_preamble.sh"
+
+# kit sandbox: local, nothing to check against GitHub, the branch or a freeze.
+if [ -n "${KIT_SANDBOX:-}" ]; then
+  kit_info "sandbox: freeze skipped"
+  exit 0
+fi
+
+if kit_is_rollback && kit_is_true "$(kit_conf KIT_FREEZE_ALLOWS_ROLLBACK true)"; then exit 0; fi
+for file in "$KIT_CONFIG_DIR/FREEZE" ${KIT_DESTINATION:+"$KIT_CONFIG_DIR/FREEZE.$KIT_DESTINATION"}; do
+  if [ -f "$file" ]; then
+    reason=$(head -c 500 "$file" | tr '\n' ' ' | sed 's/ *$//')
+    kit_gate_die "deploys are frozen (${file#"$KIT_PROJECT_DIR"/})${reason:+: $reason}; kit unfreeze lifts it"
+  fi
+done
+kit_is_true "$(kit_conf KIT_FREEZE false)" && kit_gate_die "deploys are frozen (KIT_FREEZE)"
+exit 0

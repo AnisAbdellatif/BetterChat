@@ -1,0 +1,49 @@
+# Kamal config for an app behind kamal-proxy, itself behind the host's
+# Caddy (deploy-kit preset "behind-caddy", README.md here). Replace the
+# <placeholders>; the rest is what the preset is about.
+#
+#   Internet ─443─► Caddy (TLS) ─► 127.0.0.1:8080 kamal-proxy ─► the app
+#
+service: <app>
+image: <owner>/<app>
+
+servers:
+  web:
+    hosts: [<server>]
+  # Roles without a proxy (workers) go here too; a role where exactly one
+  # may be active is a deploy-kit standby group (docs/groups.md).
+
+proxy:
+  # kamal-proxy routes on the Host header Caddy passes on.
+  host: <app.example.com>
+  # The port the app listens on inside its container (Kamal's default is 80).
+  app_port: <4000>
+  # Caddy terminates TLS; kamal-proxy speaks plain HTTP to it.
+  ssl: false
+  # Keep Caddy's X-Forwarded-For and X-Forwarded-Proto (the default with
+  # ssl: false; stated so it survives someone turning ssl on).
+  forward_headers: true
+  # kamal-proxy moves traffic to a new container once this answers 200.
+  healthcheck:
+    path: </up>
+    interval: 3
+    timeout: 3
+  # How kamal-proxy itself is started. It is ONE container per server,
+  # shared by every Kamal app deployed there: every project on this server
+  # must use this same `run` block.
+  run:
+    http_port: 8080
+    https_port: 8443
+    # Reachable only from this machine, i.e. only through Caddy.
+    bind_ips: [127.0.0.1]
+
+registry:
+  server: ghcr.io
+  username: <owner>
+  password: [KAMAL_REGISTRY_PASSWORD]
+
+builder:
+  arch: amd64
+
+ssh:
+  user: deploy

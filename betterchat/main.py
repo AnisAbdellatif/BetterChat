@@ -9,8 +9,8 @@
     GET  /admin/api/stats    the JSON the board polls (HTTP Basic Auth)
     GET  /health             liveness
 
-One process behind one hostname (betterchat.tech through a Cloudflare
-Tunnel): the chat itself runs in the browser (site/kick.js talks to Kick
+One process behind one hostname (betterchat.tech, through the host's Caddy
+and kamal-proxy): the chat itself runs in the browser (site/kick.js talks to Kick
 directly), so this server only hands out files and counts viewers.
 
 Configuration is environment variables:

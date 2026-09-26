@@ -1,0 +1,31 @@
+# CI for a project deployed by hand with deploy-kit: CI only tests. It
+# holds no SSH key and no app secret, so a compromised runner can't reach
+# the servers. `kit deploy` checks this workflow passed for the exact
+# commit it deploys (the ci-green step). Copy to .github/workflows/ci.yml
+# and fill in the steps.
+#
+# Actions are pinned to commit SHAs (a tag can be moved; a SHA can't).
+# Keep them current with Dependabot or Renovate, which update the SHAs.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # - your setup, lint and test steps
+      - run: echo "add your tests here"

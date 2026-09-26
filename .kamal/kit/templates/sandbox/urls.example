@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# What `kit sandbox up` and `status` print: where everything is.
+cat <<URLS
+
+  The app      http://localhost:8080
+URLS

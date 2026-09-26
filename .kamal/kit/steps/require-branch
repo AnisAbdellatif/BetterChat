@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Deploy only from an allowed branch (KIT_DEPLOY_BRANCH, a list; per
+# destination: KIT_DEPLOY_BRANCH_STAGING=dev). A rollback is exempt: it
+# goes back to a build that was already allowed.
+. "$(dirname "$0")/_preamble.sh"
+
+# kit sandbox: local, nothing to check against GitHub, the branch or a freeze.
+if [ -n "${KIT_SANDBOX:-}" ]; then
+  kit_info "sandbox: require-branch skipped"
+  exit 0
+fi
+
+kit_is_rollback && exit 0
+allowed=$(kit_conf KIT_DEPLOY_BRANCH main)
+branch=$(git -C "$KIT_PROJECT_DIR" symbolic-ref --quiet --short HEAD || true)
+[ -n "$branch" ] || kit_gate_die "not on a branch (detached HEAD); deploy from: $allowed"
+kit_in_list "$branch" "$allowed" || kit_gate_die "on branch '$branch'; ${KIT_DESTINATION:-this destination} deploys from: $allowed"
+kit_ok "branch $branch"

@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Announces the deploy: "deploying" in pre-deploy (info level, off unless
+# KIT_NOTIFY_LEVELS has info), "deployed" in post-deploy. Within `kit`
+# commands, which report the whole operation themselves, it stays quiet.
+. "$(dirname "$0")/_preamble.sh"
+
+[ -z "${KIT_RUN_DIR:-}" ] || exit 0
+what=${KAMAL_SERVICE_VERSION:-${KAMAL_VERSION:-?}}
+who=${KAMAL_PERFORMER:-unknown}
+roles=${KAMAL_ROLES:+ (roles: $KAMAL_ROLES)}
+case "${KIT_HOOK:-}:${KAMAL_COMMAND:-deploy}" in
+  pre-deploy:rollback) kit_notify info "rolling back to $what$roles, by $who" ;;
+  pre-deploy:*) kit_notify info "deploying $what$roles, by $who" ;;
+  post-deploy:rollback) kit_notify success "rolled back to $what$roles in ${KAMAL_RUNTIME:-?}s, by $who" ;;
+  post-deploy:*) kit_notify success "deployed $what$roles in ${KAMAL_RUNTIME:-?}s, by $who" ;;
+  *) kit_notify info "${KIT_HOOK:-hook}: $what$roles, by $who" ;;
+esac
+exit 0

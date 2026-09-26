@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# After the first deploy: data to start from. `kit sandbox exec ROLE CMD`
+# runs a command in a role's container.
+set -euo pipefail
+"$KIT" sandbox exec web bin/seed

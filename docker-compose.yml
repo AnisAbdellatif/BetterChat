@@ -1,20 +1,14 @@
-# BetterChat on a homelab, published through Cloudflare Tunnel.
+# BetterChat in Docker on this machine, for trying the image as it ships:
 #
 #   cp .env.example .env          # ADMIN_USER / ADMIN_PASSWORD
-#   docker compose up -d --build
-#   tunnel: betterchat.tech -> http://localhost:8010   (or your HOST_PORT)
+#   docker compose up -d --build  # http://localhost:8010 (or your HOST_PORT)
 #
-# The same file runs the production instance and the dev one, from separate
-# checkouts on the same host. Three things in .env keep them apart:
-# COMPOSE_PROJECT_NAME (container and volume names), IMAGE_TAG (below) and
-# HOST_PORT. Read by compose from the .env beside this file.
+# Production and dev are deployed with Kamal and deploy-kit instead
+# (config/deploy*.yml, README "Deploying"); nothing there reads this file.
 services:
   betterchat:
     build: .
-    # Tagged per instance. With a fixed tag, building dev would move the tag
-    # production's next restart resolves, and production would quietly come
-    # back up on dev's code.
-    image: betterchat:${IMAGE_TAG:-local}
+    image: betterchat:local
     restart: unless-stopped
     ports:
       # HOST_PORT (from .env) on the host -> 8010 inside the container.
