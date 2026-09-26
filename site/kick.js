@@ -31,7 +31,19 @@
     pinDeleted: 'App\\Events\\PinnedMessageDeletedEvent',
     subscription: 'App\\Events\\SubscriptionEvent',
     gifted: 'App\\Events\\GiftedSubscriptionsEvent',
+    // Kick's own frontend binds this one without the App\Events prefix, on
+    // chatroom_<id> rather than chatrooms.<id>.v2 - see channels() below.
+    giftedPlain: 'GiftedSubscriptionsEvent',
+    // Kicks: Kick's paid gifts. Not prefixed either, and on channel_<id>.
+    kicks: 'KicksGifted',
     host: 'App\\Events\\StreamHostEvent',
+    // Deliberately absent: App\Events\StreamHostedEvent, which Kick sends on
+    // chatrooms.<id> for the same host it sends StreamHostEvent for on
+    // chatrooms.<id>.v2 - both were captured for one host, a second apart,
+    // same hoster and same 500 viewers, in different shapes (the Hosted one
+    // nests a `message` {numberOfViewers, optionalMessage} and a whole `user`).
+    // Now that both channels are subscribed to, mapping it too would draw
+    // every host twice.
     live: 'App\\Events\\StreamerIsLive',
     offline: 'App\\Events\\StopStreamBroadcast',
   };
@@ -164,11 +176,33 @@
       case EV.subscription:
         return { type: 'subscription', username: str(data.username), months: integer(data.months) || 1 };
       case EV.gifted:
+      case EV.giftedPlain:
         return {
           type: 'gifted_subs',
           gifter: str(data.gifter_username),
           recipients: list(data.gifted_usernames).filter((u) => typeof u === 'string'),
         };
+      // Captured live: {gift_transaction_id, message, sender {id, username,
+      // username_color, profile_picture}, gift {gift_id, name, amount, type,
+      // tier, character_limit, pinned_time}, created_at}.
+      //
+      // `message` sits beside `gift`, not inside it, which is easy to get
+      // wrong and silent when you do. Only the larger gifts carry one: a
+      // BASIC "Hell Yeah" has character_limit 0 and no message, a LEVEL_UP
+      // "Rage Quit" has 150 and does.
+      case EV.kicks: {
+        const gift = (data && data.gift) || {};
+        const sender = (data && data.sender) || {};
+        return {
+          type: 'kicks',
+          username: str(sender.username),
+          color: str(sender.username_color),
+          gift: str(gift.name),
+          amount: integer(gift.amount) || 0,
+          tier: str(gift.tier),
+          message: str(data.message),
+        };
+      }
       case EV.host:
         return {
           type: 'host',
@@ -363,9 +397,20 @@
       return `wss://ws-${this.o.cluster}.pusher.com/app/${this.o.appKey}?protocol=7&client=js&version=8.4.0&flash=false`;
     }
 
+    // The four Kick's own page joins, and it does not put everything on one.
+    // Read off its bundle: chat, deletions, bans, subs and clears are on
+    // chatrooms.<id>.v2; gifted subs and reward redemptions on the underscore
+    // form chatroom_<id>; hosts on chatrooms.<id>; and Kicks on channel_<id>.
+    //
+    // Subscribing to .v2 alone is why gifted subs never arrived here: the
+    // handler was right and nothing was ever delivered to it.
     channels() {
-      const list = [`chatrooms.${this.o.chatroomId}.v2`];
-      if (this.o.channelId) list.push(`channel.${this.o.channelId}`);
+      const list = [`chatrooms.${this.o.chatroomId}.v2`, `chatrooms.${this.o.chatroomId}`];
+      list.push(`chatroom_${this.o.chatroomId}`);
+      if (this.o.channelId) {
+        list.push(`channel.${this.o.channelId}`);
+        list.push(`channel_${this.o.channelId}`);
+      }
       return list;
     }
 

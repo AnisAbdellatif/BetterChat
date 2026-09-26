@@ -213,7 +213,15 @@ test('PusherRelay: handshake subscribes to both channels and routes frames', () 
   relay.ws = { readyState: 1, send: (s) => sent.push(JSON.parse(s)) };
 
   relay.handleFrame(JSON.stringify({ event: 'pusher:connection_established', data: JSON.stringify({ socket_id: '1.2', activity_timeout: 120 }) }));
-  assert.deepEqual(sent.map((f) => f.data.channel), ['chatrooms.668.v2', 'channel.999']);
+  // The five Kick's own page joins: chat on .v2, hosts on the dotted form,
+  // gifted subs and rewards on chatroom_<id>, Kicks on channel_<id>.
+  assert.deepEqual(sent.map((f) => f.data.channel), [
+    'chatrooms.668.v2',
+    'chatrooms.668',
+    'chatroom_668',
+    'channel.999',
+    'channel_999',
+  ]);
   assert.equal(relay.activityTimeoutMs, 120000);
 
   relay.handleFrame(JSON.stringify({ event: 'pusher_internal:subscription_succeeded', channel: 'channel.999', data: '{}' }));
@@ -272,6 +280,72 @@ test('KickApi.verifyUser: a failing request throws instead of caching a "no"', a
   await assert.rejects(() => api.verifyUser('xqc', 'someone'));
   await assert.rejects(() => api.verifyUser('xqc', 'someone'));
   assert.equal(calls, 2, 'asked again rather than remembered as "not a user"');
+});
+
+// Captured live from channel_<id> on 2026-09-26.
+test('normalizeEvent: Kicks arrive unprefixed, on the channel feed', () => {
+  const ev = normalizeEvent('KicksGifted', {
+    gift_transaction_id: 'afe3a153-520a-4f19-a53b-e06fb5025786',
+    sender: {
+      id: 71954577,
+      username: 'NIGHT_FURY00',
+      username_color: '#E9113C',
+      profile_picture: 'https://kick.com/img/default-profile-pictures/default-avatar-5.webp',
+    },
+    gift: {
+      gift_id: 'hell_yeah',
+      name: 'Hell Yeah',
+      amount: 1,
+      type: 'BASIC',
+      tier: 'BASIC',
+      character_limit: 0,
+      pinned_time: 0,
+    },
+    created_at: '2026-09-26T22:48:19.219322464Z',
+  });
+  assert.deepEqual(ev, {
+    type: 'kicks',
+    username: 'NIGHT_FURY00',
+    color: '#E9113C',
+    gift: 'Hell Yeah',
+    amount: 1,
+    tier: 'BASIC',
+    // A BASIC gift carries no message: character_limit was 0.
+    message: null,
+  });
+});
+
+// The larger gifts carry a message, and it sits beside `gift` rather than in
+// it - reading it from the wrong place is silent, so it has a test.
+test('normalizeEvent: a LEVEL_UP Kicks gift carries its message', () => {
+  const ev = normalizeEvent('KicksGifted', {
+    gift_transaction_id: '83d330b2-1658-4809-b985-c2468a282557',
+    message: 'Mefercho si lees esto te cojo.',
+    sender: { id: 44643023, username: 'Zixeat_Zarco', username_color: '#E9113C' },
+    gift: {
+      gift_id: 'rage_quit',
+      name: 'Rage Quit',
+      amount: 500,
+      type: 'LEVEL_UP',
+      tier: 'MID',
+      character_limit: 150,
+      pinned_time: 600000000000,
+    },
+    created_at: '2026-09-26T22:51:53.438009554Z',
+    expires_at: '2026-09-26T23:01:53.438009554Z',
+  });
+  assert.equal(ev.amount, 500);
+  assert.equal(ev.gift, 'Rage Quit');
+  assert.equal(ev.tier, 'MID');
+  assert.equal(ev.message, 'Mefercho si lees esto te cojo.');
+});
+
+test('normalizeEvent: gifted subs are also sent without the App\\Events prefix', () => {
+  const plain = normalizeEvent('GiftedSubscriptionsEvent', {
+    gifter_username: 'bigspender',
+    gifted_usernames: ['alice', 'bob'],
+  });
+  assert.deepEqual(plain, { type: 'gifted_subs', gifter: 'bigspender', recipients: ['alice', 'bob'] });
 });
 
 test('parseContent: text and emotes, and a run of one emote combined', () => {

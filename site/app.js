@@ -899,6 +899,45 @@ BetterChatSettings.ready.then(function () {
 
   // Sub / gift / host / moderation lines. `parts` is a list of strings and
   // {user: name} objects so usernames can be styled without innerHTML.
+  // Subs, gifts and hosts are the moments a channel notices, and a line of
+  // grey text among five hundred messages is not how they should arrive. Those
+  // three are drawn as cards: the icon larger, who did what on the first line,
+  // and the number that actually matters - months, how many were gifted, how
+  // many viewers came with a host - on its own beneath it.
+  //
+  // Moderation keeps eventLine. A timeout is a record, not an occasion, and
+  // making it as loud as a gift would be the wrong way round.
+  function eventCard(kind, icon, headParts, detail) {
+    const row = el('div', `event card ${kind}`);
+    const ic = el('span', 'icon', icon);
+    const body = el('div', 'event-body');
+    const head = el('div', 'event-head');
+    fillParts(head, headParts);
+    body.appendChild(head);
+    if (detail && detail.length) {
+      const line = el('div', 'event-detail');
+      fillParts(line, detail);
+      body.appendChild(line);
+    }
+    row.append(ic, body);
+    appendRow(row);
+  }
+
+  // Strings and {user} objects into a node, so a username is styled and never
+  // built out of innerHTML.
+  function fillParts(into, parts) {
+    for (const part of parts) {
+      if (typeof part === 'string') {
+        into.appendChild(document.createTextNode(part));
+      } else if (part && part.user) {
+        // Kick named this person, so the name is real whatever chat types.
+        noteUser(part.user);
+        const u = el('span', 'user', part.user);
+        into.appendChild(u);
+      }
+    }
+  }
+
   function eventLine(kind, icon, parts) {
     const row = document.createElement('div');
     row.className = `event ${kind}`;
@@ -906,18 +945,7 @@ BetterChatSettings.ready.then(function () {
     ic.className = 'icon';
     ic.textContent = icon;
     row.appendChild(ic);
-    for (const part of parts) {
-      if (typeof part === 'string') {
-        row.appendChild(document.createTextNode(part));
-      } else if (part && part.user) {
-        // Kick named this person, so the name is real whatever chat types.
-        noteUser(part.user);
-        const u = document.createElement('span');
-        u.className = 'user';
-        u.textContent = part.user;
-        row.appendChild(u);
-      }
-    }
+    fillParts(row, parts);
     appendRow(row);
   }
 
@@ -2045,6 +2073,9 @@ BetterChatSettings.ready.then(function () {
   function fitActions(row) {
     const wanted = [];
     if (replyAvailable && canReplyTo(row)) wanted.push(['msg-reply', replyButton]);
+    // Wherever the chat is read, and so the one button that gives every
+    // message a bar - including on betterchat.tech with no extension at all.
+    if (row.dataset.text) wanted.push(['msg-copy', copyButton]);
     if (modAvailable && row.dataset.id) {
       // Pinning needs the whole message, and a row drawn before the controls
       // were on was never kept with one. Those can still be replied to and
@@ -2170,6 +2201,60 @@ BetterChatSettings.ready.then(function () {
     }
     return svg;
   }
+
+  // Copying a message. Not a moderator's button and not the extension's: it
+  // needs no session and nothing outside this page, so it is offered wherever
+  // the chat is read - which is why fitActions always has at least this one.
+  //
+  // Drawn on a 24 grid like the pin; the second path is the hole in the front
+  // sheet, which is a hole rather than a shape because it is wound the other
+  // way round.
+  const COPY_BOX = '0 0 24 24';
+  const COPY_PATHS = [
+    'M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1z',
+    'M19 5H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z'
+  ];
+  const TICK_PATHS = ['M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z'];
+
+  function copyButton() {
+    const btn = el('button', 'msg-copy');
+    btn.type = 'button';
+    btn.title = 'Copy this message';
+    btn.setAttribute('aria-label', 'Copy this message');
+    btn.appendChild(icon(COPY_PATHS, null, COPY_BOX));
+    return btn;
+  }
+
+  // What the viewer would read, not what came down the wire: the emote tokens
+  // Kick sends are turned back into the names they stand for, so a copied
+  // message pastes as "nice KEKW" rather than "nice [emote:37226:KEKW]".
+  function messageText(row) {
+    const raw = (row && row.dataset.text) || '';
+    if (!raw) return '';
+    return BetterChatKick.parseContent(raw, { combine: false })
+      .map((part) => (part.type === 'text' ? part.text : part.name))
+      .join('');
+  }
+
+  messagesEl.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.msg-copy');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const text = messageText(btn.closest('.msg'));
+    if (!text) return;
+    const ok = await copyText(text);
+    if (!ok) return;
+    // Said on the button, because the settings panel's note line is not on
+    // screen when the chat is.
+    clearTimeout(btn.dataset.timer);
+    btn.replaceChildren(icon(TICK_PATHS, null, COPY_BOX));
+    btn.classList.add('copied');
+    btn.dataset.timer = setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.replaceChildren(icon(COPY_PATHS, null, COPY_BOX));
+    }, 1200);
+  });
 
   function replyButton() {
     const btn = el('button', 'msg-reply');
@@ -2466,35 +2551,59 @@ BetterChatSettings.ready.then(function () {
   // Chat events (subs, gifts, hosts)
   // ---------------------------------------------------------------------
 
+  // Grouped, because a host can bring four figures of viewers and "1204
+  // viewers" is a number you have to count the digits of.
+  const plural = (n, word) => `${Number(n).toLocaleString()} ${word}${n === 1 ? '' : 's'}`;
+
   function onSubscription(ev) {
     if (!settings.showSubs) return;
     const months = ev.months || 1;
-    eventLine('sub', '★', [
-      { user: ev.username },
-      months > 1 ? ` subscribed for ${months} months` : ' just subscribed',
-    ]);
+    eventCard(
+      'sub',
+      '★',
+      [{ user: ev.username }, ' subscribed'],
+      // A resub's months are the point of it; a first sub has no number, and
+      // saying "1 month" of someone who just arrived reads as a downgrade.
+      months > 1 ? [plural(months, 'month')] : ['new subscriber']
+    );
   }
 
   function onGiftedSubs(ev) {
     if (!settings.showGifts) return;
     const recipients = ev.recipients || [];
-    const parts = [{ user: ev.gifter || 'Someone' }, ` gifted ${recipients.length} sub${recipients.length === 1 ? '' : 's'}`];
+    const detail = [plural(recipients.length, 'sub')];
+    // Named while the list is short enough to read. Kick sends up to 25 in one
+    // event, and twenty-five names is a wall, not information.
     if (recipients.length && recipients.length <= 5) {
-      parts.push(' to ');
+      detail.push(' to ');
       recipients.forEach((name, i) => {
-        if (i > 0) parts.push(', ');
-        parts.push({ user: name });
+        if (i > 0) detail.push(', ');
+        detail.push({ user: name });
       });
     }
-    eventLine('gift', '🎁', parts);
+    eventCard('gift', '🎁', [{ user: ev.gifter || 'Someone' }, ' gifted subs'], detail);
+  }
+
+  // Kicks are Kick's paid gifts. The amount is the number of Kicks spent and
+  // is the whole point, so it leads; the gift's own name says which one it
+  // was. A message only comes with the larger gifts - the small ones have a
+  // character limit of zero - so it is shown where there is one.
+  function onKicks(ev) {
+    if (!settings.showKicks) return;
+    const detail = [];
+    if (ev.amount) detail.push(plural(ev.amount, 'Kick'));
+    if (ev.gift) detail.push(detail.length ? ` - ${ev.gift}` : ev.gift);
+    if (ev.message) detail.push(`: ${ev.message}`);
+    eventCard('kicks', '⚡', [{ user: ev.username }, ' sent Kicks'], detail);
   }
 
   function onHost(ev) {
     if (!settings.showHosts) return;
-    const parts = [{ user: ev.host_username }, ' is hosting'];
-    if (ev.viewers) parts.push(` with ${ev.viewers} viewer${ev.viewers === 1 ? '' : 's'}`);
-    if (ev.message) parts.push(`: ${ev.message}`);
-    eventLine('host', '📺', parts);
+    const detail = [];
+    // The viewer count is the hosting channel's own: the viewers brought over.
+    if (ev.viewers) detail.push(plural(ev.viewers, 'viewer'));
+    if (ev.message) detail.push(detail.length ? ` - ${ev.message}` : ev.message);
+    eventCard('host', '📺', [{ user: ev.host_username }, ' is hosting'], detail);
   }
 
   // ---------------------------------------------------------------------
@@ -2552,6 +2661,7 @@ BetterChatSettings.ready.then(function () {
     pin_deleted: () => clearPin(),
     subscription: onSubscription,
     gifted_subs: onGiftedSubs,
+    kicks: onKicks,
     host: onHost,
   };
 

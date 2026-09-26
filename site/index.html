@@ -264,8 +264,14 @@
      the moderation setting can each land after the row was drawn. Deleting is
      last, furthest from the pointer's path. */
   .msg-actions .msg-reply { order: 1; }
-  .msg-actions .mod-pin { order: 2; }
-  .msg-actions .mod-delete { order: 3; }
+  .msg-actions .msg-copy { order: 2; }
+  .msg-actions .mod-pin { order: 3; }
+  .msg-actions .mod-delete { order: 4; }
+
+  .msg-copy svg { width: 14px; height: 14px; }
+  .msg-copy:hover { color: #53fc18; }
+  /* Held for a moment after a copy, with the tick already swapped in. */
+  .msg-copy.copied { color: #53fc18; }
 
   .mod-delete { font-size: 16px; }
   .mod-delete:hover { color: #ff6b6b; }
@@ -441,9 +447,45 @@
   }
   .event .icon { margin-right: 0.4em; }
   .event .user { font-weight: 700; color: #efeff1; }
+
+  /* Subs, gifts and hosts as cards rather than lines. The icon gets a column
+     of its own so the two text lines stay aligned with each other rather than
+     wrapping back under it, and the surface is a little stronger than the
+     plain event's - these are the rows a streamer is watching for. */
+  .event.card {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 10px;
+    border-left-width: 4px;
+  }
+  .event.card .icon {
+    margin-right: 0;
+    flex: 0 0 auto;
+    font-size: 1.5em;
+    line-height: 1;
+  }
+  .event-body { min-width: 0; }
+  .event-head { font-size: 1.05em; }
+  .event-head .user { font-size: 1.05em; }
+  /* The number that matters, and the only part allowed to be loud. */
+  .event-detail {
+    margin-top: 1px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+  .event.card.sub .event-detail { color: #53fc18; }
+  .event.card.gift .event-detail { color: #c85cff; }
+  .event.card.host .event-detail { color: #3ea6ff; }
+  .event.card.kicks .event-detail { color: #53fc18; }
+  /* Inside the detail a recipient is a name, not another number. */
+  .event-detail .user { font-weight: 600; color: #efeff1; }
   .event.sub { border-left-color: #53fc18; background: rgba(83, 252, 24, 0.08); }
   .event.gift { border-left-color: #c85cff; background: rgba(200, 92, 255, 0.1); }
   .event.host { border-left-color: #3ea6ff; background: rgba(62, 166, 255, 0.1); }
+  /* Kicks are Kick's own money, and Kick's own green. */
+  .event.kicks { border-left-color: #53fc18; background: rgba(83, 252, 24, 0.12); }
   .event.mod { border-left-color: #ff6b6b; background: rgba(255, 107, 107, 0.08); color: #adadb8; font-style: italic; }
   .event.fade { opacity: 0; }
 
@@ -1197,6 +1239,11 @@
           <label class="toggle-row">
             <span><span class="label">Gifted subs</span></span>
             <input type="checkbox" data-setting="showGifts" /><span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span><span class="label">Kicks</span>
+              <div class="desc">Kick's paid gifts, with the amount sent.</div></span>
+            <input type="checkbox" data-setting="showKicks" /><span class="switch"></span>
           </label>
           <label class="toggle-row">
             <span><span class="label">Hosts</span></span>
