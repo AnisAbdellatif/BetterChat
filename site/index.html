@@ -68,7 +68,9 @@
   body.has-pin #messages { padding-top: calc(var(--pin-height, 2.6em) + 12px); }
 
   .msg { padding: 2px 4px; border-radius: 4px; transition: opacity 0.4s; }
-  .msg:hover { background: rgba(255, 255, 255, 0.04); }
+  /* Also held while a button in its action bar has the keyboard, so the row
+     the bar acts on stays marked. */
+  .msg:hover, .msg:has(> .msg-actions:focus-within) { background: rgba(255, 255, 255, 0.1); }
   .msg.mentions-me { background: rgba(83, 252, 24, 0.12); border-left: 3px solid #53fc18; padding-left: 6px; }
   .msg.deleted { opacity: 0.4; }
   .msg.deleted .content { text-decoration: line-through; }
@@ -221,14 +223,16 @@
   /* Moderation. Only drawn inside the extension, where the parent page can
      act on Kick for us; body.can-moderate is what says so. */
   /* The per-message controls: one floating bar rather than buttons laid over
-     the text. It sits above the message's top-right corner, so it covers the
-     gap and the row above instead of the words being acted on - reading a
-     message you are about to delete is the point of hovering it. */
+     the text. It straddles the message's top edge at the right: mostly over
+     the row above, so it stays off the words being acted on - reading a
+     message you are about to delete is the point of hovering it - but dipping
+     into the highlighted row far enough that it is plainly that row's bar,
+     not the one it half covers. */
   body.can-moderate .msg,
   body.can-reply .msg { position: relative; }
   .msg-actions {
     position: absolute;
-    top: -19px;
+    top: -15px;
     right: 4px;
     z-index: 3;
     display: none;
