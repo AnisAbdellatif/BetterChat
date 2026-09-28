@@ -40,6 +40,7 @@
   "collapsePinned": true,
   "showSubs": true,
   "showGifts": true,
+  "showKicks": true,
   "showHosts": true,
   "overlayFadeSec": 0
 }

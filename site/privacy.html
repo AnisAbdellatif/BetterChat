@@ -35,7 +35,7 @@
 <body>
 <main>
   <h1>Privacy Policy</h1>
-  <p class="updated">BetterChat &middot; last updated 16 September 2026</p>
+  <p class="updated">BetterChat &middot; last updated 28 September 2026</p>
 
   <p>This policy covers the BetterChat website at <code>betterchat.tech</code> and the
   &ldquo;KickPlus&rdquo; browser extension. Both are run by one independent
@@ -44,34 +44,62 @@
   <p class="lead">BetterChat has no accounts, no cookies, no advertising and no
   trackers. It does not collect personal information, and it does not send your chat
   activity anywhere. The one thing it can send is an anonymous count of how many tabs
-  are watching, and only if you say yes when asked.</p>
+  are watching, and only if you say yes when asked. The extension&rsquo;s live chart,
+  while you have it switched on, also asks KickTracker for the figures of the channel
+  on screen (below).</p>
+
+  <p><strong>Changed on 28 September 2026:</strong> the extension&rsquo;s live chart now
+  reads its figures from KickTracker by default, instead of only gathering them in
+  the Kick tab. See <a href="#kicktracker">The live chart and KickTracker</a>.</p>
 
   <h2>What BetterChat stores</h2>
   <p>Your settings &mdash; font, colours, filters, which badges to show and so on &mdash;
   are saved by your browser in <code>localStorage</code>, on your own device. They are
   never sent to us. Clearing your browser&rsquo;s site data removes them.</p>
-  <p>The extension stores four settings: <code>enabled</code>, whether chat replacement
+  <p>The extension stores five settings: <code>enabled</code>, whether chat replacement
   is on; <code>useDev</code>, whether to load the test build instead of the normal one;
-  <code>showViewers</code>, whether the live chart is on; and
-  <code>viewersRange</code>, how many minutes that chart shows. They are kept in
+  <code>showViewers</code>, whether the live chart is on;
+  <code>viewersRange</code>, how many minutes that chart shows; and
+  <code>chartSource</code>, whether the chart reads its figures from KickTracker or
+  gathers them in the Kick tab. They are kept in
   <code>chrome.storage.sync</code>, so Chrome may sync them between devices you are
   signed in to. They hold no personal information.</p>
-  <p>While the live chart is switched on, the extension asks Kick for the current
-  channel&rsquo;s viewer count every 15 seconds, from the kick.com tab, the way
-  kick.com&rsquo;s own page loads channel details. To count active chatters it also
-  listens to that channel&rsquo;s public chat feed, the same one kick.com&rsquo;s chat
-  uses, and notes only each sender&rsquo;s Kick user id and when they last wrote; message
-  text is not kept, and entries older than 15 minutes are discarded. The readings are
-  held in your browser&rsquo;s memory (<code>chrome.storage.session</code>), so the
-  chart survives reloading the Kick tab, and are never sent to us. They are erased
-  when you switch the chart off or quit the browser.</p>
+  <p id="kicktracker"><strong>The live chart and KickTracker.</strong> The chart is off
+  until you switch it on. While it is on, by default, the extension asks
+  <a href="https://kicktracker.anisabdellatif.me">KickTracker</a>
+  (<code>kicktracker.anisabdellatif.me</code>), a statistics site run by the same
+  developer, for the figures of the channel on screen: once a minute, the last 15
+  minutes of its viewer counts, active chatters and hosts. Each request names that
+  channel and carries a key built into the extension, the same for everyone. It
+  carries nothing about you: no account, no id, nothing from your Kick session.
+  Your IP address arrives with it, as with any web request; KickTracker holds it in
+  memory for about a minute to limit request rates, and does not store it. Its
+  server&rsquo;s operational log notes each request&rsquo;s path and time &mdash; that
+  is, which channel was asked about &mdash; never who asked. KickTracker only records
+  channels it already tracks, and asking about one does not start tracking it. Like
+  BetterChat, it is reached through Cloudflare, which processes requests in transit
+  under its own terms.</p>
+  <p>Switch <em>Chart data from KickTracker</em> off in the extension&rsquo;s popup and
+  the extension never contacts KickTracker. The same happens for any channel
+  KickTracker does not track: the chart then gathers its figures in the Kick tab, as
+  follows. It asks Kick for the current channel&rsquo;s viewer count every 15 seconds,
+  from the kick.com tab, the way kick.com&rsquo;s own page loads channel details. To
+  count active chatters it also listens to that channel&rsquo;s public chat feed, the
+  same one kick.com&rsquo;s chat uses, and notes only each sender&rsquo;s Kick user id
+  and when they last wrote; message text is not kept, and entries older than 15
+  minutes are discarded. These readings are held in your browser&rsquo;s memory
+  (<code>chrome.storage.session</code>), so the chart survives reloading the Kick tab,
+  and are never sent to us. They are erased when you switch the chart off or quit the
+  browser.</p>
   <p>Where the extension gives moderators delete, timeout and ban buttons, it reads
   your Kick login token from your browser only to make that one request to Kick, as
   you, the way kick.com&rsquo;s own page does. The token is read per action, is never
   stored, and never goes anywhere but Kick.</p>
 
   <h2>What BetterChat sends to us</h2>
-  <p>Nothing at all, unless you agree to the viewer count. You are asked once, on your
+  <p>From the extension, only the live chart&rsquo;s requests to KickTracker described
+  above, and only while the chart is on and set to read from KickTracker.</p>
+  <p>From the BetterChat page, nothing at all, unless you agree to the viewer count. You are asked once, on your
   first visit, and nothing is sent before you answer. Declining is a normal answer and
   the chat works exactly the same either way. You can change your mind at any time
   under <em>Overlay &amp; sharing</em> in the settings.</p>
@@ -104,6 +132,8 @@
   <p>Those requests go to Kick, not through us. Kick receives them as it would any other
   visit to their service, including your IP address, and its handling of them is covered
   by Kick&rsquo;s own privacy policy.</p>
+  <p>With the extension&rsquo;s chart on and reading from KickTracker, the extension
+  also contacts <code>kicktracker.anisabdellatif.me</code>, as described above.</p>
 
   <h2>Server logs</h2>
   <p>Requests for the BetterChat page and its files reach a small web server, which keeps

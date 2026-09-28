@@ -120,7 +120,9 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
   back-to-back once, with a combo count beside it (`×12`); highlight messages
   that @mention you.
 - Events: what to do with deleted messages, which moderation / pin / sub /
-  gift / host events to show, and whether a pinned message starts collapsed.
+  gift / Kicks / host events to show, and whether a pinned message starts
+  collapsed. Subs, gifted subs, Kicks and hosts are drawn as cards rather than
+  lines - who did what, and the number that matters underneath.
   The moderation controls themselves are not a setting: they appear when Kick
   says the signed-in account can moderate the channel, and not otherwise.
 - Overlay & sharing: fade-out time for the OBS overlay, copy an overlay or
