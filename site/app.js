@@ -1612,6 +1612,12 @@ BetterChatSettings.ready.then(function () {
   const USER_CARD_CACHE_CAP = 50;
   const USER_CARD_TTL_MS = 3 * 60 * 1000;
   let userCardRequest = 0;
+  // Set while a card is open, so a message from that user can be dropped into
+  // the card as it arrives rather than only being there next time it is
+  // opened. Cleared when the card closes or is re-rendered for someone else.
+  let openUserKey = null;
+  let openUserHistoryEl = null;
+  let openUserCountEl = null;
 
   function recordUserHistory(msg) {
     const key = (msg.username || '').toLowerCase();
@@ -1625,6 +1631,30 @@ BetterChatSettings.ready.then(function () {
     while (userHistory.size > HISTORY_USERS_CAP) {
       userHistory.delete(userHistory.keys().next().value);
     }
+    if (key === openUserKey) appendOpenCardMessage(key, msg);
+  }
+
+  // Newest first, at the top of the list under the header - the same order
+  // renderUserCard lays the history out in. Kept to the per-user cap so a card
+  // left open on a busy chatter does not grow without bound.
+  function appendOpenCardMessage(key, msg) {
+    if (userCardEl.hidden || !openUserHistoryEl) return;
+    const none = openUserHistoryEl.querySelector('.none');
+    if (none) none.remove();
+    const header = openUserHistoryEl.querySelector('.k');
+    openUserHistoryEl.insertBefore(userHistoryLine(msg), header ? header.nextSibling : null);
+    const lines = openUserHistoryEl.querySelectorAll('.line');
+    for (let i = HISTORY_PER_USER; i < lines.length; i += 1) lines[i].remove();
+    if (openUserCountEl) openUserCountEl.textContent = String((userHistory.get(key) || []).length);
+  }
+
+  function userHistoryLine(m) {
+    const line = el('div', 'line');
+    line.appendChild(el('span', 't', timeOnly(m.created_at)));
+    const c = el('span', 'c');
+    appendMessageContent(c, m.content || '');
+    line.appendChild(c);
+    return line;
   }
 
   function formatDate(iso) {
@@ -1670,10 +1700,15 @@ BetterChatSettings.ready.then(function () {
   function closeUserCard() {
     userCardEl.hidden = true;
     userCardEl.replaceChildren();
+    openUserKey = null;
+    openUserHistoryEl = null;
+    openUserCountEl = null;
   }
 
   function renderUserCard(username, card) {
     userCardEl.replaceChildren();
+    openUserKey = username.toLowerCase();
+    openUserCountEl = null;
 
     const head = el('div', 'uc-head');
     const avatar = document.createElement('img');
@@ -1717,7 +1752,9 @@ BetterChatSettings.ready.then(function () {
       facts.appendChild(fact('Subscribed for', months ? `${months} month${months === 1 ? '' : 's'}` : 'Not subscribed'));
       facts.appendChild(fact('Followed', card.following_since ? formatDate(card.following_since) : 'Not following'));
       facts.appendChild(fact('Joined on', card.created_at ? formatDate(card.created_at) : '—'));
-      facts.appendChild(fact('Messages here', String((userHistory.get(username.toLowerCase()) || []).length)));
+      const countFact = fact('Messages here', String((userHistory.get(openUserKey) || []).length));
+      openUserCountEl = countFact.querySelector('.v');
+      facts.appendChild(countFact);
       userCardEl.appendChild(facts);
 
       const badges = renderBadges({ badges: card.badges, badges_v2: card.badges_v2 });
@@ -1733,23 +1770,22 @@ BetterChatSettings.ready.then(function () {
 
     const history = el('div', 'uc-history');
     history.appendChild(el('div', 'k', 'Recent messages'));
-    const lines = (userHistory.get(username.toLowerCase()) || []).slice().reverse();
+    const lines = (userHistory.get(openUserKey) || []).slice().reverse();
     if (!lines.length) {
       history.appendChild(el('div', 'none', 'Nothing since this page was opened.'));
     }
-    for (const m of lines) {
-      const line = el('div', 'line');
-      line.appendChild(el('span', 't', timeOnly(m.created_at)));
-      const c = el('span', 'c');
-      appendMessageContent(c, m.content || '');
-      line.appendChild(c);
-      history.appendChild(line);
-    }
+    for (const m of lines) history.appendChild(userHistoryLine(m));
     userCardEl.appendChild(history);
+    // Kept so a message arriving while the card is open lands in this list.
+    openUserHistoryEl = history;
   }
 
   function showUserCardStatus(username, text, isError) {
     userCardEl.replaceChildren();
+    // No live history element while loading; renderUserCard sets these again.
+    openUserKey = null;
+    openUserHistoryEl = null;
+    openUserCountEl = null;
     const head = el('div', 'uc-head');
     const who = el('div', 'uc-who');
     who.appendChild(el('div', 'uc-name', username));
