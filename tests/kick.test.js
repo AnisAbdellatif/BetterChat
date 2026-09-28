@@ -348,6 +348,31 @@ test('normalizeEvent: gifted subs are also sent without the App\\Events prefix',
   assert.deepEqual(plain, { type: 'gifted_subs', gifter: 'bigspender', recipients: ['alice', 'bob'] });
 });
 
+test('normalizeEvent: channel-point redemption, with and without typed input', () => {
+  const withInput = normalizeEvent('RewardRedeemedEvent', {
+    reward_title: 'Highlight My Message',
+    username: 'redeemer',
+    user_input: 'hi from the front',
+  });
+  assert.deepEqual(withInput, {
+    type: 'reward',
+    username: 'redeemer',
+    reward: 'Highlight My Message',
+    input: 'hi from the front',
+  });
+
+  // No typed input on a reward that does not ask for one.
+  const bare = normalizeEvent('RewardRedeemedEvent', { reward_title: 'Hydrate!', username: 'redeemer' });
+  assert.deepEqual(bare, { type: 'reward', username: 'redeemer', reward: 'Hydrate!', input: null });
+
+  // Nested title spelling and a prefixed event name are both read.
+  const nested = normalizeEvent('App\\Events\\RewardRedeemedEvent', {
+    reward: { title: 'Nested Reward' },
+    user: { username: 'someone' },
+  });
+  assert.deepEqual(nested, { type: 'reward', username: 'someone', reward: 'Nested Reward', input: null });
+});
+
 test('parseContent: text and emotes, and a run of one emote combined', () => {
   const e = (id, name, count = 1) => ({ type: 'emote', id, name, count });
   const t = (text) => ({ type: 'text', text });

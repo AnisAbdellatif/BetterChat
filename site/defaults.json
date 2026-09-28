@@ -41,6 +41,7 @@
   "showSubs": true,
   "showGifts": true,
   "showKicks": true,
+  "showRewards": true,
   "showHosts": true,
   "overlayFadeSec": 0
 }

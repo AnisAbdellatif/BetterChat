@@ -108,7 +108,7 @@
     'showPinned',
     // Pinned messages arrive collapsed, and only open when the viewer says so.
     'collapsePinned',
-    'showSubs', 'showGifts', 'showKicks', 'showHosts',
+    'showSubs', 'showGifts', 'showKicks', 'showRewards', 'showHosts',
   ]);
   const NUMBER_RANGES = Object.freeze({
     fontSize: [8, 40],

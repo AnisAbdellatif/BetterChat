@@ -483,6 +483,7 @@
   .event.card.gift .event-detail { color: #c85cff; }
   .event.card.host .event-detail { color: #3ea6ff; }
   .event.card.kicks .event-detail { color: #53fc18; }
+  .event.card.reward .event-detail { color: #ffb648; }
   /* Inside the detail a recipient is a name, not another number. */
   .event-detail .user { font-weight: 600; color: #efeff1; }
   .event.sub { border-left-color: #53fc18; background: rgba(83, 252, 24, 0.08); }
@@ -490,6 +491,8 @@
   .event.host { border-left-color: #3ea6ff; background: rgba(62, 166, 255, 0.1); }
   /* Kicks are Kick's own money, and Kick's own green. */
   .event.kicks { border-left-color: #53fc18; background: rgba(83, 252, 24, 0.12); }
+  /* Channel points: an amber of their own, away from the sub/Kicks green. */
+  .event.reward { border-left-color: #ffb648; background: rgba(255, 182, 72, 0.1); }
   .event.mod { border-left-color: #ff6b6b; background: rgba(255, 107, 107, 0.08); color: #adadb8; font-style: italic; }
   .event.fade { opacity: 0; }
 
@@ -1248,6 +1251,11 @@
             <span><span class="label">Kicks</span>
               <div class="desc">Kick's paid gifts, with the amount sent.</div></span>
             <input type="checkbox" data-setting="showKicks" /><span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span><span class="label">Channel points</span>
+              <div class="desc">Reward redemptions, with the reward's name and anything the redeemer typed.</div></span>
+            <input type="checkbox" data-setting="showRewards" /><span class="switch"></span>
           </label>
           <label class="toggle-row">
             <span><span class="label">Hosts</span></span>

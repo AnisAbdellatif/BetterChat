@@ -36,6 +36,12 @@
     giftedPlain: 'GiftedSubscriptionsEvent',
     // Kicks: Kick's paid gifts. Not prefixed either, and on channel_<id>.
     kicks: 'KicksGifted',
+    // Channel-point reward redemptions, on the underscore chatroom_<id> feed
+    // beside gifted subs. Kick binds it unprefixed; the App\Events form is
+    // accepted too in case the feed ever sends it that way, the same guard
+    // gifted subs already get with giftedPlain.
+    reward: 'RewardRedeemedEvent',
+    rewardPrefixed: 'App\\Events\\RewardRedeemedEvent',
     host: 'App\\Events\\StreamHostEvent',
     // Deliberately absent: App\Events\StreamHostedEvent, which Kick sends on
     // chatrooms.<id> for the same host it sends StreamHostEvent for on
@@ -201,6 +207,21 @@
           amount: integer(gift.amount) || 0,
           tier: str(gift.tier),
           message: str(data.message),
+        };
+      }
+      // Channel points. Kick's shape has varied - the title has come as
+      // `reward_title` and, nested, as `reward.title`; what the redeemer typed
+      // as `user_input`. Both spellings are read so a redemption is never
+      // drawn blank. `user_input` is only present on rewards set up to require
+      // it, so it is shown where there is one, the way a Kicks message is.
+      case EV.reward:
+      case EV.rewardPrefixed: {
+        const reward = (data && data.reward) || {};
+        return {
+          type: 'reward',
+          username: str(data.username) || (data.user && str(data.user.username)),
+          reward: str(data.reward_title) || str(reward.title) || str(data.title),
+          input: str(data.user_input) || str(data.input) || str(data.message),
         };
       }
       case EV.host:

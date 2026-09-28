@@ -54,7 +54,7 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
 - Moderation: deleted messages and banned / timed-out users' messages are
   grayed out (or removed, or left alone); timeouts, bans, unbans and chat
   clears appear as lines. Pinned message banner, subscription / gifted-sub /
-  host lines.
+  channel-point / host lines.
 - The pinned banner hides rather than closes: hiding it puts a pin button
   under the gear that brings it back, and a newly pinned message shows again
   on its own. Turn on "start collapsed" and it goes the other way - a pin
@@ -120,9 +120,10 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
   back-to-back once, with a combo count beside it (`×12`); highlight messages
   that @mention you.
 - Events: what to do with deleted messages, which moderation / pin / sub /
-  gift / Kicks / host events to show, and whether a pinned message starts
-  collapsed. Subs, gifted subs, Kicks and hosts are drawn as cards rather than
-  lines - who did what, and the number that matters underneath.
+  gift / Kicks / channel-point / host events to show, and whether a pinned
+  message starts collapsed. Subs, gifted subs, Kicks, channel-point redemptions
+  and hosts are drawn as cards rather than lines - who did what, and the number
+  or reward that matters underneath.
   The moderation controls themselves are not a setting: they appear when Kick
   says the signed-in account can moderate the channel, and not otherwise.
 - Overlay & sharing: fade-out time for the OBS overlay, copy an overlay or

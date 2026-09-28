@@ -2597,6 +2597,17 @@ BetterChatSettings.ready.then(function () {
     eventCard('kicks', '⚡', [{ user: ev.username }, ' sent Kicks'], detail);
   }
 
+  // Channel-point redemptions. The reward's name is the point of it and leads
+  // the detail line; some rewards ask the redeemer to type something, and that
+  // is shown after it where there is one, the way a Kicks message is.
+  function onReward(ev) {
+    if (!settings.showRewards) return;
+    const detail = [];
+    if (ev.reward) detail.push(ev.reward);
+    if (ev.input) detail.push(detail.length ? `: ${ev.input}` : ev.input);
+    eventCard('reward', '🎟️', [{ user: ev.username || 'Someone' }, ' redeemed'], detail);
+  }
+
   function onHost(ev) {
     if (!settings.showHosts) return;
     const detail = [];
@@ -2662,6 +2673,7 @@ BetterChatSettings.ready.then(function () {
     subscription: onSubscription,
     gifted_subs: onGiftedSubs,
     kicks: onKicks,
+    reward: onReward,
     host: onHost,
   };
 
