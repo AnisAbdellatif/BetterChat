@@ -15,12 +15,25 @@
 //
 // `ready` resolves once defaults.json is in. In Node it is read on the spot;
 // in the browser it has to be fetched, so app.js waits on `ready` to start.
+// A host with no fetch at all - the desktop app's embedded QuickJS, running
+// core.js - reads the file itself and hands it to useDefaults, and `ready`
+// resolves then.
 (function (root, factory) {
   const api = factory();
   if (typeof module !== 'undefined' && module.exports) {
     api.useDefaults(require('./defaults.json'));
     api.ready = Promise.resolve(api);
     module.exports = api;
+  } else if (typeof fetch !== 'function') {
+    root.BetterChatSettings = api;
+    const useDefaults = api.useDefaults;
+    api.ready = new Promise((resolve) => {
+      api.useDefaults = (json) => {
+        const defaults = useDefaults(json);
+        resolve(api);
+        return defaults;
+      };
+    });
   } else {
     root.BetterChatSettings = api;
     api.ready = fetch('/defaults.json')

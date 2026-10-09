@@ -1,0 +1,32 @@
+{
+  "description": "going live and offline, losing the socket, reconnecting and resubscribing (which refreshes the pin)",
+  "rest": {
+    "/channels/668/messages": "kick/history.json"
+  },
+  "steps": [
+    {
+      "join": true
+    },
+    {
+      "frame": "live"
+    },
+    {
+      "frame": "offline"
+    },
+    {
+      "drop": true
+    },
+    {
+      "advance": 1000
+    },
+    {
+      "open": true
+    },
+    {
+      "frame": "connection-established"
+    },
+    {
+      "frame": "subscribed-chat"
+    }
+  ]
+}

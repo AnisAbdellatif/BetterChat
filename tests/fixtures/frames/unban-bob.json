@@ -1,0 +1,1 @@
+{"event":"App\\Events\\UserUnbannedEvent","data":"{\"id\":\"u1\",\"user\":{\"id\":1002,\"username\":\"bob_42\",\"slug\":\"bob-42\"},\"unbanned_by\":{\"id\":7,\"username\":\"ModMike\",\"slug\":\"modmike\"},\"permanent\":true}","channel":"chatrooms.668.v2"}

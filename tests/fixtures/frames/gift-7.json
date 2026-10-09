@@ -1,0 +1,1 @@
+{"event":"App\\Events\\GiftedSubscriptionsEvent","data":"{\"chatroom_id\":668,\"gifted_usernames\":[\"u1\",\"u2\",\"u3\",\"u4\",\"u5\",\"u6\",\"u7\"],\"gifter_username\":null}","channel":"chatrooms.668.v2"}

@@ -1,0 +1,218 @@
+[
+  {
+    "frame": "live"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "line",
+          "id": "r7",
+          "style": "system",
+          "error": false,
+          "icon": null,
+          "segs": [
+            {
+              "t": "text",
+              "text": "xqc went live: JUST CHATTING"
+            }
+          ]
+        }
+      },
+      {
+        "op": "status",
+        "status": {
+          "state": "ok",
+          "text": "",
+          "level": "",
+          "socket": true,
+          "subscribed": true,
+          "live": true,
+          "joined": true
+        }
+      }
+    ]
+  },
+  {
+    "frame": "offline"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "line",
+          "id": "r8",
+          "style": "system",
+          "error": false,
+          "icon": null,
+          "segs": [
+            {
+              "t": "text",
+              "text": "xqc went offline"
+            }
+          ]
+        }
+      },
+      {
+        "op": "status",
+        "status": {
+          "state": "offline",
+          "text": "xqc is offline - chat still works",
+          "level": "offline",
+          "socket": true,
+          "subscribed": true,
+          "live": false,
+          "joined": true
+        }
+      }
+    ]
+  },
+  {
+    "drop": true
+  },
+  {
+    "ops": [
+      {
+        "op": "status",
+        "status": {
+          "state": "subscribing",
+          "text": "Waiting for Kick to confirm the chat subscription...",
+          "level": "warn",
+          "socket": true,
+          "subscribed": false,
+          "live": false,
+          "joined": true
+        }
+      }
+    ]
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "line",
+          "id": "r9",
+          "style": "system",
+          "error": true,
+          "icon": null,
+          "segs": [
+            {
+              "t": "text",
+              "text": "lost connection to Kick, reconnecting..."
+            }
+          ]
+        }
+      },
+      {
+        "op": "status",
+        "status": {
+          "state": "reconnecting",
+          "text": "Connection to Kick lost, reconnecting...",
+          "level": "warn",
+          "socket": false,
+          "subscribed": false,
+          "live": false,
+          "joined": true
+        }
+      }
+    ]
+  },
+  {
+    "advance": 1000
+  },
+  {
+    "fetch": "/channels/xqc/users/bob_42"
+  },
+  {
+    "open": true
+  },
+  {
+    "ops": [
+      {
+        "op": "status",
+        "status": {
+          "state": "subscribing",
+          "text": "Waiting for Kick to confirm the chat subscription...",
+          "level": "warn",
+          "socket": true,
+          "subscribed": false,
+          "live": false,
+          "joined": true
+        }
+      }
+    ]
+  },
+  {
+    "frame": "connection-established"
+  },
+  {
+    "frame": "subscribed-chat"
+  },
+  {
+    "fetch": "/channels/668/messages"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "line",
+          "id": "r10",
+          "style": "system",
+          "error": false,
+          "icon": null,
+          "segs": [
+            {
+              "t": "text",
+              "text": "reconnected to xqc's chat"
+            }
+          ]
+        }
+      },
+      {
+        "op": "status",
+        "status": {
+          "state": "offline",
+          "text": "xqc is offline - chat still works",
+          "level": "offline",
+          "socket": true,
+          "subscribed": true,
+          "live": false,
+          "joined": true
+        }
+      }
+    ]
+  },
+  {
+    "ops": [
+      {
+        "op": "pin",
+        "pin": {
+          "msgId": "p-1",
+          "username": "ModMike",
+          "color": "#E9113C",
+          "text": "rules: be nice [emote:37226:KEKW]",
+          "parts": [
+            {
+              "t": "text",
+              "text": "rules: be nice "
+            },
+            {
+              "t": "emote",
+              "id": "37226",
+              "name": "KEKW",
+              "url": "https://files.kick.com/emotes/37226/fullsize",
+              "count": 1
+            }
+          ],
+          "by": "ModMike",
+          "expiresAt": "2026-09-09T14:32:47.597067Z",
+          "durationMin": 1155
+        }
+      }
+    ]
+  }
+]

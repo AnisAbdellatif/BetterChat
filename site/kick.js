@@ -7,9 +7,13 @@
 //   PusherRelay  - one WebSocket to Kick's Pusher feed, subscribed to the
 //                  chatroom (chat) and channel (live/offline) channels,
 //                  with ping/pong keepalive and reconnect with backoff.
-//   normalize*   - turn Kick's raw payloads into the shapes app.js renders.
+//   normalize*   - turn Kick's raw payloads into the shapes core.js works on.
 //
-// Loaded as a classic <script>; also require()-able from Node for tests.
+// Loaded as a classic <script>; also require()-able from Node for tests, and
+// evaluated as a plain script by the desktop app's embedded QuickJS, which has
+// no fetch, WebSocket or timers of its own. KickApi and PusherRelay take those
+// as options for that reason, and only fall back to the browser's globals when
+// none are given - see core.js, which is what hands them over.
 (function (root, factory) {
   const api = factory();
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
@@ -105,7 +109,7 @@
     };
   }
 
-  // A chat message as app.js expects it, or null for anything malformed.
+  // A chat message as core.js expects it, or null for anything malformed.
   function normalizeMessage(data) {
     if (!data || typeof data !== 'object') return null;
     const sender = data.sender || {};
@@ -136,21 +140,25 @@
   }
 
   // Pin durations from Kick are MINUTES (default pin = 1200 = 20h); the
-  // history endpoint also gives an absolute `finish_at`.
-  function buildPin(data) {
+  // history endpoint also gives an absolute `finish_at`. `nowMs` is the clock
+  // the expiry is counted from, passed in by whoever has one to hand (a test's
+  // fake clock, the desktop app's); Date.now() when nobody does.
+  function buildPin(data, nowMs) {
     const message = normalizeMessage(data && data.message);
     if (!message) return null;
     const durationMin = integer(data.duration);
     let expiresAt = str(data.finish_at);
     if (!expiresAt && durationMin && durationMin > 0) {
-      expiresAt = new Date(Date.now() + durationMin * 60000).toISOString();
+      const now = typeof nowMs === 'number' ? nowMs : Date.now();
+      expiresAt = new Date(now + durationMin * 60000).toISOString();
     }
     const by = (data.pinnedBy && str(data.pinnedBy.username)) || (data.pinned_by && str(data.pinned_by.username)) || null;
     return { type: 'pin_created', message, duration_min: durationMin, expires_at: expiresAt, by };
   }
 
-  // Non-message Pusher events -> {type, ...} for app.js, or null to ignore.
-  function normalizeEvent(name, data) {
+  // Non-message Pusher events -> {type, ...} for core.js, or null to ignore.
+  // `nowMs` only matters to a pin, whose expiry is counted from it.
+  function normalizeEvent(name, data, nowMs) {
     data = data && typeof data === 'object' ? data : {};
     switch (name) {
       case EV.deleted: {
@@ -176,7 +184,7 @@
           by: data.unbanned_by && str(data.unbanned_by.username),
         };
       case EV.pinCreated:
-        return buildPin(data);
+        return buildPin(data, nowMs);
       case EV.pinDeleted:
         return { type: 'pin_deleted' };
       case EV.subscription:
@@ -255,9 +263,17 @@
   const MAX_CACHE_ENTRIES = 200;
 
   class KickApi {
-    constructor({ baseUrl = 'https://kick.com/api/v2', fetchImpl } = {}) {
+    // `fetchImpl` and `now` default to the browser's own. A host without them
+    // passes its own: fetchImpl(url, init) only has to answer a GET with
+    // `ok`, `status` and `json()`. Both are called as plain functions, never
+    // as methods of this object, so the browser's own fetch can be passed
+    // as it is.
+    constructor({ baseUrl = 'https://kick.com/api/v2', fetchImpl, now } = {}) {
       this.baseUrl = baseUrl.replace(/\/+$/, '');
-      this.fetch = fetchImpl || ((...a) => fetch(...a));
+      const fetchFn = fetchImpl || ((...a) => fetch(...a));
+      const nowFn = now || (() => Date.now());
+      this.fetch = (url, init) => fetchFn(url, init);
+      this.now = () => nowFn();
       this.cache = new Map(); // key -> {value, expiresAt}
     }
 
@@ -276,10 +292,10 @@
     // oldest first - Map iterates in insertion order.
     async cached(key, ttlMs, load) {
       const hit = this.cache.get(key);
-      if (hit && hit.expiresAt > Date.now()) return hit.value;
+      if (hit && hit.expiresAt > this.now()) return hit.value;
       if (hit) this.cache.delete(key);
       const value = await load();
-      this.cache.set(key, { value, expiresAt: Date.now() + ttlMs });
+      this.cache.set(key, { value, expiresAt: this.now() + ttlMs });
       while (this.cache.size > MAX_CACHE_ENTRIES) {
         this.cache.delete(this.cache.keys().next().value);
       }
@@ -312,11 +328,17 @@
     async pinnedAndHistory(channelId) {
       const body = await this.get(`/channels/${encodeURIComponent(channelId)}/messages`);
       const data = body.data || {};
+      // Ties keep Kick's order. A browser's sort is stable and does that on its
+      // own; the index makes it so wherever this runs.
       const messages = list(data.messages)
         .map(normalizeMessage)
         .filter(Boolean)
-        .sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
-      const pinned = data.pinned_message && typeof data.pinned_message === 'object' ? buildPin(data.pinned_message) : null;
+        .map((m, at) => ({ m, at }))
+        .sort((a, b) => String(a.m.created_at || '').localeCompare(String(b.m.created_at || '')) || a.at - b.at)
+        .map(({ m }) => m);
+      const pinned = data.pinned_message && typeof data.pinned_message === 'object'
+        ? buildPin(data.pinned_message, this.now())
+        : null;
       return { pinned, messages };
     }
 
@@ -401,9 +423,22 @@
      * @param {(open: boolean) => void} [opts.onSocket]      socket opened / closed
      * @param {(ok: boolean) => void}   [opts.onSubscribed]  chatroom subscription confirmed / lost
      * @param {(name, data) => void}    [opts.onUnknown]     events we don't recognize (for debugging)
+     * @param {Function} [opts.WebSocket]     socket constructor; the browser's by default
+     * @param {Function} [opts.setTimeout]    timers; the global ones by default. clearTimeout
+     * @param {Function} [opts.clearTimeout]  has to accept null, as the browser's does
+     * @param {() => number} [opts.now]       clock for a pin's expiry; Date.now by default
      */
     constructor(opts) {
       this.o = opts;
+      // The globals are looked up when called rather than here, so a page that
+      // passes nothing keeps using whatever they are at the time. Given ones
+      // are called as plain functions, so the browser's own can be passed.
+      const setTimer = opts.setTimeout || ((fn, ms) => setTimeout(fn, ms));
+      const clearTimer = opts.clearTimeout || ((t) => clearTimeout(t));
+      const now = opts.now;
+      this.setTimer = (fn, ms) => setTimer(fn, ms);
+      this.clearTimer = (t) => clearTimer(t);
+      this.clock = now ? () => now() : null;
       this.ws = null;
       this.backoffMs = 1000;
       this.closed = false;
@@ -440,7 +475,8 @@
       this.clearTimers();
       let ws;
       try {
-        ws = new WebSocket(this.url());
+        const Socket = this.o.WebSocket || WebSocket;
+        ws = new Socket(this.url());
       } catch (_e) {
         this.scheduleReconnect();
         return;
@@ -457,19 +493,29 @@
       ws.onclose = () => {
         if (this.ws !== ws) return;
         this.ws = null;
-        this.setSubscribed(false);
-        if (this.o.onSocket) this.o.onSocket(false);
-        this.scheduleReconnect();
+        // Reconnecting must not depend on the callbacks behaving: one that
+        // throws would otherwise leave the chat disconnected for good.
+        try {
+          this.setSubscribed(false);
+        } finally {
+          try {
+            if (this.o.onSocket) this.o.onSocket(false);
+          } finally {
+            this.scheduleReconnect();
+          }
+        }
       };
     }
 
+    // For good: the socket is let go of entirely, so nothing it still
+    // delivers - a frame already on its way, a late open - reaches anyone.
     close() {
       this.closed = true;
       this.clearTimers();
       if (this.ws) {
         const ws = this.ws;
         this.ws = null;
-        ws.onclose = null;
+        ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null;
         ws.close();
       }
     }
@@ -487,31 +533,32 @@
     scheduleReconnect() {
       if (this.closed) return;
       this.clearTimers();
-      this.reconnectTimer = setTimeout(() => this.connect(), this.backoffMs);
+      this.reconnectTimer = this.setTimer(() => this.connect(), this.backoffMs);
       this.backoffMs = Math.min(this.backoffMs * 2, MAX_BACKOFF_MS);
     }
 
     clearTimers() {
-      clearTimeout(this.pingTimer);
-      clearTimeout(this.pongTimer);
-      clearTimeout(this.reconnectTimer);
+      this.clearTimer(this.pingTimer);
+      this.clearTimer(this.pongTimer);
+      this.clearTimer(this.reconnectTimer);
       this.pingTimer = this.pongTimer = this.reconnectTimer = null;
     }
 
     // Keepalive: after activity_timeout with no traffic we ping; if nothing
     // comes back in time the socket is considered dead and we reconnect.
     armPing() {
-      clearTimeout(this.pingTimer);
-      clearTimeout(this.pongTimer);
-      this.pingTimer = setTimeout(() => {
+      this.clearTimer(this.pingTimer);
+      this.clearTimer(this.pongTimer);
+      this.pingTimer = this.setTimer(() => {
         this.send({ event: 'pusher:ping', data: {} });
-        this.pongTimer = setTimeout(() => {
+        this.pongTimer = this.setTimer(() => {
           if (this.ws) this.ws.close();
         }, PONG_TIMEOUT_MS);
       }, this.activityTimeoutMs);
     }
 
     handleFrame(raw) {
+      if (this.closed) return;
       let frame;
       try {
         frame = JSON.parse(raw);
@@ -559,7 +606,7 @@
         }
         default: {
           if (typeof name !== 'string' || name.startsWith('pusher')) return;
-          const ev = normalizeEvent(name, data);
+          const ev = normalizeEvent(name, data, this.clock ? this.clock() : undefined);
           if (ev) this.o.onEvent(ev);
           else if (this.o.onUnknown) this.o.onUnknown(name, data);
         }
@@ -573,8 +620,8 @@
 
   // Kick's message text embeds emotes as "[emote:<id>:<name>]" rather than
   // sending markup; kick.com's own frontend parses the placeholders, so this
-  // page has to as well. Splits content into text and emote pieces for app.js
-  // to draw.
+  // page has to as well. Splits content into text and emote pieces, for
+  // core.js to turn into message parts (and app.js, to copy a message as text).
   //
   // With `combine`, a run of the same emote - back to back, or with nothing
   // but whitespace between - becomes one piece with a count, so

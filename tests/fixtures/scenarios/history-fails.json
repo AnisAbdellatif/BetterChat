@@ -1,0 +1,9 @@
+{
+  "description": "when Kick's history request fails there is no backfill and no pin op at all; a pin from the feed still arrives",
+  "logJoin": true,
+  "rest": {"/channels/668/messages": null},
+  "steps": [
+    {"join": true},
+    {"frame": "pin-created"}
+  ]
+}

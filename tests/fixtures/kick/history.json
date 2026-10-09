@@ -1,0 +1,107 @@
+{
+  "status": {
+    "error": false,
+    "code": 200,
+    "message": "SUCCESS"
+  },
+  "data": {
+    "messages": [
+      {
+        "id": "h-3",
+        "chatroom_id": 668,
+        "content": "third",
+        "type": "message",
+        "created_at": "2026-09-08T17:59:30+00:00",
+        "sender": {
+          "id": 1002,
+          "username": "bob_42",
+          "slug": "bob-42",
+          "identity": {
+            "color": "#93EBFF",
+            "badges": []
+          }
+        }
+      },
+      {
+        "id": "h-2",
+        "chatroom_id": 668,
+        "content": "second @bob_42",
+        "type": "message",
+        "created_at": "2026-09-08T17:59:20+00:00",
+        "sender": {
+          "id": 1001,
+          "username": "Ann",
+          "slug": "ann",
+          "identity": {
+            "color": "#FF9D00",
+            "badges": [
+              {
+                "type": "subscriber",
+                "text": "Subscriber",
+                "count": 8,
+                "sort_order": 9
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "h-1",
+        "chatroom_id": 668,
+        "content": "first",
+        "type": "message",
+        "created_at": "2026-09-08T17:59:10+00:00",
+        "sender": {
+          "id": 1001,
+          "username": "Ann",
+          "slug": "ann",
+          "identity": {
+            "color": "#FF9D00",
+            "badges": [
+              {
+                "type": "subscriber",
+                "text": "Subscriber",
+                "count": 8,
+                "sort_order": 9
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "broken"
+      }
+    ],
+    "cursor": "1757354400000",
+    "pinned_message": {
+      "duration": 1155,
+      "finish_at": "2026-09-09T14:32:47.597067Z",
+      "message": {
+        "id": "p-1",
+        "chatroom_id": 668,
+        "content": "rules: be nice [emote:37226:KEKW]",
+        "type": "message",
+        "created_at": "2026-09-08T17:50:00+00:00",
+        "sender": {
+          "id": 1003,
+          "username": "ModMike",
+          "slug": "modmike",
+          "identity": {
+            "color": "#E9113C",
+            "badges": [
+              {
+                "type": "moderator",
+                "text": "Moderator",
+                "count": null,
+                "sort_order": 3
+              }
+            ]
+          }
+        }
+      },
+      "pinned_by": {
+        "username": "ModMike"
+      }
+    }
+  }
+}

@@ -1,0 +1,155 @@
+[
+  {
+    "frame": "timeout-ann"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "line",
+          "id": "r4",
+          "style": "mod",
+          "error": false,
+          "icon": "⏳",
+          "segs": [
+            {
+              "t": "user",
+              "name": "Ann"
+            },
+            {
+              "t": "text",
+              "text": " was timed out for 1 hour"
+            },
+            {
+              "t": "text",
+              "text": " by "
+            },
+            {
+              "t": "user",
+              "name": "moderator"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "frame": "ban-bob"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "line",
+          "id": "r5",
+          "style": "mod",
+          "error": false,
+          "icon": "🔨",
+          "segs": [
+            {
+              "t": "user",
+              "name": "bob_42"
+            },
+            {
+              "t": "text",
+              "text": " was banned"
+            },
+            {
+              "t": "text",
+              "text": " by "
+            },
+            {
+              "t": "user",
+              "name": "ModMike"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "call": "isBanned",
+    "args": [
+      "Ann"
+    ],
+    "result": true
+  },
+  {
+    "call": "isBanned",
+    "args": [
+      "bob_42"
+    ],
+    "result": true
+  },
+  {
+    "advance": 3599000
+  },
+  {
+    "call": "isBanned",
+    "args": [
+      "Ann"
+    ],
+    "result": true
+  },
+  {
+    "advance": 1000
+  },
+  {
+    "call": "isBanned",
+    "args": [
+      "Ann"
+    ],
+    "result": false
+  },
+  {
+    "call": "isBanned",
+    "args": [
+      "bob_42"
+    ],
+    "result": true
+  },
+  {
+    "frame": "unban-bob"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "line",
+          "id": "r6",
+          "style": "mod",
+          "error": false,
+          "icon": "🔓",
+          "segs": [
+            {
+              "t": "user",
+              "name": "bob_42"
+            },
+            {
+              "t": "text",
+              "text": " was unbanned"
+            },
+            {
+              "t": "text",
+              "text": " by "
+            },
+            {
+              "t": "user",
+              "name": "ModMike"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "call": "isBanned",
+    "args": [
+      "bob_42"
+    ],
+    "result": false
+  }
+]

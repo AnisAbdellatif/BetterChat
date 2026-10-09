@@ -1,0 +1,188 @@
+[
+  {
+    "frame": "message-combo-3"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r4",
+          "msgId": "m-combo-3",
+          "type": "message",
+          "username": "bob_42",
+          "user": "bob_42",
+          "senderId": 1002,
+          "text": "[emote:37226:KEKW] [emote:37226:KEKW][emote:37226:KEKW]",
+          "createdAt": "2026-09-08T18:00:20+00:00",
+          "color": "#93EBFF",
+          "kickColor": "#93EBFF",
+          "badges": [],
+          "parts": [
+            {
+              "t": "emote",
+              "id": "37226",
+              "name": "KEKW",
+              "url": "https://files.kick.com/emotes/37226/fullsize",
+              "count": 3
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      }
+    ]
+  },
+  {
+    "frame": "message-combo-5"
+  },
+  {
+    "ops": [
+      {
+        "op": "update",
+        "id": "r4",
+        "patch": {
+          "repeats": 2
+        }
+      }
+    ]
+  },
+  {
+    "frame": "message-combo-mixed"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r5",
+          "msgId": "m-combo-mixed",
+          "type": "message",
+          "username": "Ann",
+          "user": "ann",
+          "senderId": 1001,
+          "text": "lol [emote:37226:KEKW] [emote:37226:KEKW] [emote:39261:kekBye] [emote:37226:KEKW]",
+          "createdAt": "2026-09-08T18:00:22+00:00",
+          "color": "#FF9D00",
+          "kickColor": "#FF9D00",
+          "badges": [
+            {
+              "key": 0,
+              "kind": "subscriber",
+              "title": "Subscriber (8 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "lol "
+            },
+            {
+              "t": "emote",
+              "id": "37226",
+              "name": "KEKW",
+              "url": "https://files.kick.com/emotes/37226/fullsize",
+              "count": 2
+            },
+            {
+              "t": "text",
+              "text": " "
+            },
+            {
+              "t": "emote",
+              "id": "39261",
+              "name": "kekBye",
+              "url": "https://files.kick.com/emotes/39261/fullsize",
+              "count": 1
+            },
+            {
+              "t": "text",
+              "text": " "
+            },
+            {
+              "t": "emote",
+              "id": "37226",
+              "name": "KEKW",
+              "url": "https://files.kick.com/emotes/37226/fullsize",
+              "count": 1
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      }
+    ]
+  },
+  {
+    "settings": {
+      "collapseEmotes": false
+    }
+  },
+  {
+    "advance": 7000
+  },
+  {
+    "frame": "message-combo-3b"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r6",
+          "msgId": "m-combo-3b",
+          "type": "message",
+          "username": "bob_42",
+          "user": "bob_42",
+          "senderId": 1002,
+          "text": "[emote:37226:KEKW] [emote:37226:KEKW][emote:37226:KEKW]",
+          "createdAt": "2026-09-08T18:00:29+00:00",
+          "color": "#93EBFF",
+          "kickColor": "#93EBFF",
+          "badges": [],
+          "parts": [
+            {
+              "t": "emote",
+              "id": "37226",
+              "name": "KEKW",
+              "url": "https://files.kick.com/emotes/37226/fullsize",
+              "count": 1
+            },
+            {
+              "t": "text",
+              "text": " "
+            },
+            {
+              "t": "emote",
+              "id": "37226",
+              "name": "KEKW",
+              "url": "https://files.kick.com/emotes/37226/fullsize",
+              "count": 1
+            },
+            {
+              "t": "emote",
+              "id": "37226",
+              "name": "KEKW",
+              "url": "https://files.kick.com/emotes/37226/fullsize",
+              "count": 1
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      }
+    ]
+  }
+]

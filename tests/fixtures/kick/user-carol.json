@@ -1,0 +1,16 @@
+{
+  "id": 1004,
+  "user_id": 1004,
+  "username": "Carol",
+  "slug": "carol",
+  "profile_pic": "https://files.kick.com/images/user/1004/profile_image/conversion/a-thumb.webp",
+  "is_staff": false,
+  "is_channel_owner": false,
+  "is_moderator": false,
+  "badges": [],
+  "following_since": null,
+  "subscribed_for": 0,
+  "banned": null,
+  "created_at": "2023-01-02T03:04:05.000000Z",
+  "badges_v2": []
+}

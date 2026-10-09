@@ -18,11 +18,10 @@ BetterChatSettings.ready.then(function () {
     return decodeURIComponent(fromPath || query.get('c') || location.hash.replace(/^#/, '') || '').trim();
   })();
 
-  // Everything that used to live on the server: Kick's REST API + the
-  // Pusher feed (see kick.js). The config is public (same values kick.com
-  // ships to every browser).
+  // Kick's public Pusher key and API base (config.js), the same values
+  // kick.com ships to every browser. The chat session (core.js) is what uses
+  // them; this file draws what it sends.
   const CONFIG = window.BETTERCHAT_CONFIG || {};
-  const kick = new BetterChatKick.KickApi({ baseUrl: CONFIG.kickApiBase });
 
   // OBS overlay mode (?overlay=1): transparent, no controls, fading messages.
   const overlayMode = ['1', 'true', 'on'].includes((query.get('overlay') || '').toLowerCase());
@@ -32,10 +31,6 @@ BetterChatSettings.ready.then(function () {
   // directly. Only the viewer count cares: it tells the board which viewers
   // arrived through an embed.
   const embedMode = ['1', 'true', 'on'].includes((query.get('embed') || '').toLowerCase());
-
-  // Filled in from the join reply: the channel's own subscriber badge
-  // images, one per months-tier, sorted by months ascending.
-  let subscriberBadges = [];
 
   // ---------------------------------------------------------------------
   // Settings (per viewer, kept in localStorage; can be overridden by URL)
@@ -104,20 +99,13 @@ BetterChatSettings.ready.then(function () {
     return `${location.origin}/${encodeURIComponent(slug || 'CHANNEL')}${qs ? '?' + qs : ''}`;
   }
 
-  function historyLimit() {
-    if (overlayMode) return PINNED_HISTORY;
-    return settings.scrollback ? settings.historyLimit : PINNED_HISTORY;
-  }
-
   function scrollbackEnabled() {
     return settings.scrollback && !overlayMode;
   }
 
   function usernameColor(kickColor) {
-    if (settings.monocolor) return settings.monocolorValue;
-    return HEX_COLOR.test(kickColor || '') ? kickColor : KICK_GREEN;
+    return BetterChatCore.usernameColor(settings, kickColor);
   }
-
 
   // Re-applies everything that affects messages already on screen.
   function applySettings() {
@@ -136,7 +124,12 @@ BetterChatSettings.ready.then(function () {
     document.body.classList.toggle('show-ts', settings.timestamps);
     document.body.classList.toggle('user-cards', settings.userCards && !overlayMode);
     if (!settings.userCards) closeUserCard();
-    trimHistory();
+    // The session restyles the rows a setting changes (name colours, badges,
+    // the mention highlight) and trims to the history size; turning
+    // scrollback off may have just let go of the view, so it hears that
+    // first.
+    syncHeld();
+    session.updateSettings(settings);
     restyleRows();
     applyPinVisibility();
     applyBeats();
@@ -144,27 +137,15 @@ BetterChatSettings.ready.then(function () {
     updateJumpPill(); // scrollback may have just been turned off
   }
 
-  // Everything on an existing message that a setting can change, in one walk
-  // of the list instead of one walk per setting. The list can hold thousands
-  // of rows, and the colour picker and hex field update live, so this runs on
-  // every input event while a colour is being dragged.
+  // What a setting changes on an existing message that is this page's own
+  // business rather than the session's, in one walk of the list: the
+  // timestamp's format, and the action bar. Name colours, badges and the
+  // mention highlight arrive from the session as updates to the rows that
+  // actually change.
   function restyleRows() {
     for (const row of messagesEl.querySelectorAll('.msg')) {
-      const user = row.querySelector(':scope > .user');
-      if (user) user.style.color = usernameColor(user.dataset.kickColor);
-
-      for (const badge of row.querySelectorAll('.badge[data-kind]')) {
-        badge.toggleAttribute('hidden', isBadgeHidden(badge.dataset.kind));
-      }
-      const badges = row.querySelector('.badges');
-      if (badges) sortBadgeWrap(badges);
-
       const ts = row.querySelector('.ts[data-time]');
       if (ts) ts.textContent = formatTime(ts.dataset.time);
-
-      if (row.dataset.text !== undefined) {
-        row.classList.toggle('mentions-me', mentionsMe(row.dataset.text));
-      }
 
       // Rows drawn before the handshake landed, or before the controls were
       // switched on, have no bar yet or an incomplete one.
@@ -626,18 +607,15 @@ BetterChatSettings.ready.then(function () {
   // effect on anyone else's chat. A moderator clearing the channel is a
   // different thing entirely, and arrives as an event.
   document.getElementById('clearChat').addEventListener('click', () => {
-    // Rows already queued for the next frame would otherwise land right after
-    // the list was emptied.
-    pendingRows.length = 0;
-    messagesEl.replaceChildren();
-    // Every row these keys stood for has gone, so a later repeat has nothing
-    // to count onto and should start a fresh message.
-    repeatRows.clear();
+    // The session forgets its rows (so a later repeat starts a fresh message)
+    // and sends a clear - which also drops rows still queued for the next
+    // frame - followed by the "chat cleared" line.
+    session.clearLocal();
     // Nothing is left to have scrolled up through.
     stickToBottom = true;
+    syncHeld();
     updateJumpPill();
     closeUserCard();
-    systemLine('chat cleared');
   });
   document.getElementById('closeSettings').addEventListener('click', closeSettings);
   overlay.addEventListener('click', (e) => {
@@ -689,6 +667,17 @@ BetterChatSettings.ready.then(function () {
     return !scrollbackEnabled() || (stickToBottom && !pointerDown);
   }
 
+  // The session does the trimming, so it is told whenever the view is held
+  // or let go: while held it keeps twice the history size.
+  let heldInSession = false;
+
+  function syncHeld() {
+    const held = !following();
+    if (held === heldInSession) return;
+    heldInSession = held;
+    session.setHeld(held);
+  }
+
   // The pill that shows while chat is held: how many messages have arrived
   // below since the viewer scrolled up, and a way straight back down to them.
   const jumpBtn = document.getElementById('jumpLatest');
@@ -716,8 +705,9 @@ BetterChatSettings.ready.then(function () {
 
   jumpBtn.addEventListener('click', () => {
     stickToBottom = true;
+    syncHeld();
     // Trims what was kept while held and lands on the bottom.
-    keepingView(trimHistory);
+    keepingView(() => session.trim());
     updateJumpPill();
   });
 
@@ -742,6 +732,7 @@ BetterChatSettings.ready.then(function () {
     const distance = messagesEl.scrollHeight - top - messagesEl.clientHeight;
     if (distance <= 1 || (!movedUp && distance < NEAR_BOTTOM_PX)) stickToBottom = true;
     else if (movedUp) stickToBottom = false;
+    syncHeld();
     updateJumpPill();
   }, { passive: true });
 
@@ -750,17 +741,20 @@ BetterChatSettings.ready.then(function () {
     // top, or too short to scroll, moves nothing and must not stop following.
     if (e.deltaY < 0 && !e.ctrlKey && messagesEl.scrollTop > 0) {
       stickToBottom = false;
+      syncHeld();
       updateJumpPill();
     }
   }, { passive: true });
 
   function pressList() {
     pointerDown = true;
+    syncHeld();
   }
 
   function releaseList() {
     if (!pointerDown) return;
     pointerDown = false;
+    syncHeld();
     // Whatever arrived while it was held lands now, if still following.
     stickIfFollowing();
   }
@@ -827,19 +821,21 @@ BetterChatSettings.ready.then(function () {
     return out;
   }
 
-  function trimHistory() {
-    const limit = following() ? historyLimit() : historyLimit() * 2;
-    while (messagesEl.childElementCount > limit) {
-      messagesEl.removeChild(messagesEl.firstElementChild);
-    }
-  }
-
-  // Overlay mode: rows fade out and are removed after overlayFadeSec.
+  // Overlay mode: rows fade out and are removed after overlayFadeSec. The
+  // session is told, so it stops counting them as there - a repeat of a
+  // message that has faded out is drawn again rather than counted onto it.
   function scheduleFade(row) {
     if (!overlayMode || settings.overlayFadeSec <= 0) return;
     setTimeout(() => {
       row.classList.add('fade');
-      setTimeout(() => row.remove(), 500);
+      setTimeout(() => {
+        row.remove();
+        const id = rowIds.get(row);
+        if (id && rowEls.get(id) === row) {
+          rowEls.delete(id);
+          session.dropRows([id]);
+        }
+      }, 500);
     }, settings.overlayFadeSec * 1000);
   }
 
@@ -847,36 +843,48 @@ BetterChatSettings.ready.then(function () {
   // frame - and appending one at a time cost a forced layout each for the
   // scroll that follows. Queue instead and flush once per frame through a
   // fragment, so a burst costs one layout however many messages it carries.
+  //
+  // The session trims the history as rows arrive, so its trims wait in the
+  // queue too: rows already on screen come off in the same flush that adds
+  // the new ones, and rows still queued are dropped straight away, which is
+  // what keeps a page that isn't being painted from growing the queue
+  // without bound.
   let pendingRows = [];
+  let pendingTrims = [];
   let flushFrame = 0;
   let flushTimer = 0;
+
+  // Every row the session has sent, by its id, queued or on screen.
+  const rowEls = new Map(); // row id -> element
+  const rowIds = new WeakMap(); // element -> row id
+  // The channel as Kick spells it, once the session has resolved it.
+  let joinedSlug = null;
 
   function flushRows() {
     if (flushFrame) cancelAnimationFrame(flushFrame);
     if (flushTimer) clearTimeout(flushTimer);
     flushFrame = flushTimer = 0;
-    if (!pendingRows.length) return;
+    if (!pendingRows.length && !pendingTrims.length) return;
     const rows = pendingRows;
+    const trims = pendingTrims;
     pendingRows = [];
-    const frag = document.createDocumentFragment();
-    for (const row of rows) frag.appendChild(row);
-    messagesEl.appendChild(frag);
-    if (scrollbackEnabled() && !stickToBottom) {
-      for (const row of rows) if (row.classList.contains('msg')) unseenMessages++;
-      updateJumpPill();
+    pendingTrims = [];
+    if (rows.length) {
+      const frag = document.createDocumentFragment();
+      for (const row of rows) frag.appendChild(row);
+      messagesEl.appendChild(frag);
+      if (scrollbackEnabled() && !stickToBottom) {
+        for (const row of rows) if (row.classList.contains('msg')) unseenMessages++;
+        updateJumpPill();
+      }
     }
     // New rows go in below the view, so they never move what is being read;
     // trimming old ones off the top can.
-    keepingView(trimHistory);
+    keepingView(() => removeRowEls(trims));
     for (const row of rows) scheduleFade(row);
   }
 
-  function appendRow(row) {
-    pendingRows.push(row);
-    // Cap the queue at what trimHistory would keep anyway, so a page that
-    // isn't being painted can't grow it without bound.
-    const cap = historyLimit();
-    if (pendingRows.length > cap) pendingRows.splice(0, pendingRows.length - cap);
+  function scheduleFlush() {
     if (flushFrame || flushTimer) return;
     flushFrame = requestAnimationFrame(flushRows);
     // A cross-origin iframe that kick.com has scrolled out of view gets no
@@ -886,67 +894,188 @@ BetterChatSettings.ready.then(function () {
     flushTimer = setTimeout(flushRows, 250);
   }
 
+  function appendRow(row) {
+    pendingRows.push(row);
+    scheduleFlush();
+  }
+
+  function removeRowEls(ids) {
+    for (const id of ids) {
+      const row = rowEls.get(id);
+      if (!row) continue;
+      rowEls.delete(id);
+      row.remove();
+    }
+  }
+
+  // Takes rows away wherever they are: still queued, or on screen.
+  function dropQueued(ids) {
+    const gone = new Set();
+    for (const id of ids) {
+      const row = rowEls.get(id);
+      if (row && !row.isConnected) {
+        rowEls.delete(id);
+        gone.add(row);
+      }
+    }
+    if (gone.size) pendingRows = pendingRows.filter((row) => !gone.has(row));
+  }
+
+  function trimRows(ids) {
+    dropQueued(ids);
+    if (pendingRows.length) {
+      // Off in the flush that brings the new rows in.
+      pendingTrims.push(...ids.filter((id) => rowEls.has(id)));
+      scheduleFlush();
+    } else {
+      // Nothing waiting to go in (a settings change, the jump button): now.
+      keepingView(() => removeRowEls(ids));
+    }
+  }
+
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) flushRows();
   });
 
-  function systemLine(text, isError) {
-    const row = document.createElement('div');
-    row.className = 'system' + (isError ? ' error' : '');
-    row.textContent = text;
-    appendRow(row);
+  // ---------------------------------------------------------------------
+  // Drawing the session's operations (core.js, docs/core-protocol.md)
+  // ---------------------------------------------------------------------
+
+  function applyOps(ops) {
+    // A deletion, a ban or a clear can take rows away from above the view or
+    // change their height, and must not move what the viewer is reading.
+    const moves = ops.some(
+      (op) => op.op === 'remove' || op.op === 'clear' || (op.op === 'update' && op.patch.deleted != null)
+    );
+    if (moves) keepingView(() => ops.forEach(applyOp));
+    else ops.forEach(applyOp);
   }
 
-  // Sub / gift / host / moderation lines. `parts` is a list of strings and
-  // {user: name} objects so usernames can be styled without innerHTML.
-  // Subs, gifts and hosts are the moments a channel notices, and a line of
-  // grey text among five hundred messages is not how they should arrive. Those
-  // three are drawn as cards: the icon larger, who did what on the first line,
-  // and the number that actually matters - months, how many were gifted, how
-  // many viewers came with a host - on its own beneath it.
-  //
-  // Moderation keeps eventLine. A timeout is a record, not an occasion, and
-  // making it as loud as a gift would be the wrong way round.
-  function eventCard(kind, icon, headParts, detail) {
-    const row = el('div', `event card ${kind}`);
-    const ic = el('span', 'icon', icon);
+  function applyOp(op) {
+    switch (op.op) {
+      case 'append': {
+        const row = buildRow(op.row);
+        rowEls.set(op.row.id, row);
+        rowIds.set(row, op.row.id);
+        appendRow(row);
+        return;
+      }
+      case 'update': {
+        const row = rowEls.get(op.id);
+        if (row) patchRow(row, op.patch);
+        return;
+      }
+      case 'remove':
+        dropQueued([op.id]);
+        removeRowEls([op.id]);
+        return;
+      case 'trim':
+        trimRows(op.ids);
+        return;
+      case 'clear':
+        // Rows already queued for the next frame would otherwise land right
+        // after the list was emptied.
+        pendingRows = [];
+        pendingTrims = [];
+        rowEls.clear();
+        messagesEl.replaceChildren();
+        return;
+      case 'verify':
+        markMentionsVerified(op.key);
+        return;
+      case 'pin':
+        if (op.pin) showPin(op.pin);
+        else clearPin();
+        return;
+      case 'status':
+        // The viewer count starts the first time the chat subscription is
+        // confirmed, and is not restarted by a reconnect.
+        if (op.status.subscribed && joinedSlug && !beatChannel) startBeats(joinedSlug);
+        showStatus(op.status);
+        return;
+      case 'channel':
+        joinedSlug = op.channel.slug;
+        document.title = `${op.channel.slug} - BetterChat`;
+        return;
+      case 'history':
+        if (op.user === openUserKey) appendOpenCardMessage(op.entry, op.count);
+        return;
+      default:
+        // An operation from a newer core than this page knows: nothing to draw.
+    }
+  }
+
+  function buildRow(row) {
+    if (row.kind === 'message') return messageRow(row);
+    if (row.kind === 'card') return eventCard(row);
+    return lineRow(row);
+  }
+
+  function patchRow(row, patch) {
+    if (patch.color !== undefined) {
+      const user = row.querySelector(':scope > .user');
+      if (user) user.style.color = patch.color;
+    }
+    if (patch.badges) patchBadges(row, patch.badges);
+    if (patch.mentionsMe !== undefined) row.classList.toggle('mentions-me', patch.mentionsMe);
+    if (patch.repeats !== undefined) showRepeats(row, patch.repeats);
+    if (patch.deleted != null) markDeleted(row, patch.deleted);
+  }
+
+  // System lines are plain text. Moderation lines carry an icon and segments,
+  // so usernames can be styled without innerHTML. A timeout is a record, not
+  // an occasion, and is drawn as a line rather than a card.
+  function lineRow(line) {
+    if (line.style === 'system') {
+      const row = document.createElement('div');
+      row.className = 'system' + (line.error ? ' error' : '');
+      row.textContent = line.segs.map(segText).join('');
+      return row;
+    }
+    const row = document.createElement('div');
+    row.className = `event ${line.style}`;
+    const ic = document.createElement('span');
+    ic.className = 'icon';
+    ic.textContent = line.icon;
+    row.appendChild(ic);
+    fillSegs(row, line.segs);
+    return row;
+  }
+
+  // Subs, gifts, Kicks, rewards and hosts: the icon larger, who did what on
+  // the first line, and the number that actually matters - months, how many
+  // were gifted, how many viewers came with a host - on its own beneath it.
+  function eventCard(card) {
+    const row = el('div', `event card ${card.card}`);
+    const ic = el('span', 'icon', card.icon);
     const body = el('div', 'event-body');
     const head = el('div', 'event-head');
-    fillParts(head, headParts);
+    fillSegs(head, card.head);
     body.appendChild(head);
-    if (detail && detail.length) {
+    if (card.detail && card.detail.length) {
       const line = el('div', 'event-detail');
-      fillParts(line, detail);
+      fillSegs(line, card.detail);
       body.appendChild(line);
     }
     row.append(ic, body);
-    appendRow(row);
+    return row;
   }
 
-  // Strings and {user} objects into a node, so a username is styled and never
-  // built out of innerHTML.
-  function fillParts(into, parts) {
-    for (const part of parts) {
-      if (typeof part === 'string') {
-        into.appendChild(document.createTextNode(part));
-      } else if (part && part.user) {
-        // Kick named this person, so the name is real whatever chat types.
-        noteUser(part.user);
-        const u = el('span', 'user', part.user);
-        into.appendChild(u);
-      }
+  // Grouped, because a host can bring four figures of viewers and "1204
+  // viewers" is a number you have to count the digits of.
+  function segText(seg) {
+    if (seg.t === 'count') return `${Number(seg.n).toLocaleString()} ${seg.n === 1 ? seg.unit : seg.units}`;
+    if (seg.t === 'user') return seg.name;
+    return seg.text || '';
+  }
+
+  // Segments into a node, a username as a span of its own so it is styled
+  // and never built out of innerHTML.
+  function fillSegs(into, segs) {
+    for (const seg of segs) {
+      if (seg.t === 'user') into.appendChild(el('span', 'user', seg.name));
+      else into.appendChild(document.createTextNode(segText(seg)));
     }
-  }
-
-  function eventLine(kind, icon, parts) {
-    const row = document.createElement('div');
-    row.className = `event ${kind}`;
-    const ic = document.createElement('span');
-    ic.className = 'icon';
-    ic.textContent = icon;
-    row.appendChild(ic);
-    fillParts(row, parts);
-    appendRow(row);
   }
 
   function formatTime(iso) {
@@ -957,86 +1086,13 @@ BetterChatSettings.ready.then(function () {
     return settings.timestampFormat === 'hms' ? `${base}:${two(d.getSeconds())}` : base;
   }
 
-  // ---------------------------------------------------------------------
-  // Repeated messages (per user)
-  //
-  // Keyed on user + normalized content (case/whitespace-insensitive, so
-  // "Pog Pog" and "pog  pog" count as the same message). Once the SAME user
-  // has posted it `dedupeRepeats` times inside the last `dedupeWindowSec`
-  // seconds, a further copy is counted onto the one on screen (x2, x3, ...)
-  // instead of being drawn again; other users posting the same text are
-  // unaffected.
-  // ---------------------------------------------------------------------
-
-  const recentMessages = new Map(); // "user\ncontent" -> [timestamps]
-  let lastPrune = 0;
-
-  function normalizeContent(content) {
-    return content.trim().replace(/\s+/g, ' ').toLowerCase();
-  }
-
-  // The row currently standing for each key, so a repeat can be counted onto
-  // it instead of dropped. Kept in step with recentMessages by the prune
-  // below, so it cannot outgrow the window either.
-  const repeatRows = new Map(); // key -> the .msg element showing it
-
-  function pruneRecent(now, windowMs) {
-    for (const [key, times] of recentMessages) {
-      const kept = times.filter((t) => now - t <= windowMs);
-      if (kept.length) {
-        recentMessages.set(key, kept);
-      } else {
-        recentMessages.delete(key);
-        repeatRows.delete(key);
-      }
-    }
-  }
-
-  // Records the message and says whether it counts as a repeat. The key comes
-  // back either way, so the row that is drawn can be registered as the one a
-  // later repeat counts onto. Recording happens even with the filter off, so
-  // turning it on mid-stream already has history.
-  function repeatState(username, content) {
-    const now = Date.now();
-    const windowMs = settings.dedupeWindowSec * 1000;
-    if (now - lastPrune > 5000) {
-      pruneRecent(now, windowMs);
-      lastPrune = now;
-    }
-
-    const text = normalizeContent(content);
-    if (!text) return { key: null, repeat: false };
-    const key = `${(username || '').toLowerCase()}\n${text}`;
-    const times = (recentMessages.get(key) || []).filter((t) => now - t <= windowMs);
-    const seenBefore = times.length;
-    times.push(now);
-    recentMessages.set(key, times);
-
-    return { key, repeat: settings.dedupe && seenBefore >= settings.dedupeRepeats };
-  }
-
-  // Adds this repeat to the copy already on screen. False when there is no
-  // such copy any more - trimmed out of history, say - and the caller should
-  // just draw the message instead.
-  function countRepeat(key) {
-    const row = key ? repeatRows.get(key) : null;
-    // A row that is still queued for the next frame counts as being there:
-    // rows are registered before they are appended, and appending waits for
-    // an animation frame. Without this, a burst of the same message - which
-    // is exactly what this feature is for - arrives while the first copy is
-    // still detached, reads it as gone, and draws every copy separately.
-    if (!row || (!row.isConnected && !pendingRows.includes(row))) {
-      if (key) repeatRows.delete(key);
-      return false;
-    }
-
-    const total = Number(row.dataset.repeats || 1) + 1;
+  // A repeat counted onto this row: the count goes in front of the message
+  // itself, after any timestamp.
+  function showRepeats(row, total) {
     row.dataset.repeats = String(total);
-
     let tag = row.querySelector('.repeat-count');
     if (!tag) {
       tag = el('span', 'repeat-count');
-      // In front of the message itself, after any timestamp.
       const anchor = row.querySelector('.badges') || row.querySelector('.user');
       row.insertBefore(tag, anchor || null);
     }
@@ -1044,25 +1100,57 @@ BetterChatSettings.ready.then(function () {
     // "copies", not "posted N times": with an allowance above one, earlier
     // copies got rows of their own and this counts the ones folded into this.
     tag.title = `${total} copies`;
-    return true;
+  }
+
+  function markDeleted(row, reason) {
+    row.classList.add('deleted');
+    const tag = row.querySelector('.deleted-tag');
+    if (tag && reason) tag.textContent = reason;
   }
 
   // ---------------------------------------------------------------------
   // Badges
   //
-  // Kick sends two lists per sender (see KickChatRelay.ChatMessage):
-  //   badges    - channel-level: subscriber (count = months), sub_gifter
-  //               (count = gifts), moderator, vip, og, broadcaster, ...
-  //               Only the subscriber badge has an image (channel-specific,
-  //               from the join reply); the rest are drawn inline here.
-  //   badges_v2 - global badges (chat level, event badges) with a hosted
-  //               image_url.
-  // Rendered in Kick's order: channel badges first, then global ones.
+  // The session works out which badges a message has, their kinds, titles
+  // and order, and which are hidden; this only draws them. Hidden badges are
+  // still drawn (just not displayed), so a kind switched back on comes back
+  // on the messages already there.
+  //
+  // A drawn badge arrives as a small SVG document. Its shapes are read back
+  // out of it - once per distinct drawing - and built with createElementNS,
+  // the same nodes the page has always made, rather than handing the markup
+  // to an HTML or XML parser. The session writes that markup in one fixed
+  // form (one level of shapes, double-quoted attributes, escaped values), so
+  // reading it needs nothing more than the two patterns below.
   // ---------------------------------------------------------------------
 
-  function svgBadge(children, title) {
+  const badgeKeys = new WeakMap(); // badge element -> its key in the row
+  const svgDrawings = new Map(); // svg markup -> {viewBox, shapes: [[tag, [[name, value]], text?]]}
+  const SVG_SHAPE = /<(\w+)((?:\s+[\w:-]+="[^"]*")*)\s*(?:\/>|>([^<]*)<\/\1>)/g;
+  const SVG_ATTR = /([\w:-]+)="([^"]*)"/g;
+  const XML_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"' };
+  const unescapeXml = (text) => text.replace(/&(amp|lt|gt|quot);/g, (_, name) => XML_ENTITIES[name]);
+
+  function svgDrawing(markup) {
+    let drawing = svgDrawings.get(markup);
+    if (drawing) return drawing;
+    const open = /^<svg\b[^>]*>/.exec(markup);
+    const viewBox = open && /viewBox="([^"]*)"/.exec(open[0]);
+    const inner = markup.slice(open ? open[0].length : 0).replace(/<\/svg>\s*$/, '');
+    const shapes = [];
+    for (const m of inner.matchAll(SVG_SHAPE)) {
+      const attrs = [...m[2].matchAll(SVG_ATTR)].map((a) => [a[1], unescapeXml(a[2])]);
+      shapes.push([m[1], attrs, m[3] === undefined ? undefined : unescapeXml(m[3])]);
+    }
+    drawing = { viewBox: viewBox ? unescapeXml(viewBox[1]) : '0 0 16 16', shapes };
+    svgDrawings.set(markup, drawing);
+    return drawing;
+  }
+
+  function svgBadge(markup, title) {
+    const drawing = svgDrawing(markup);
     const svg = document.createElementNS(SVG_NS, 'svg');
-    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('viewBox', drawing.viewBox);
     svg.setAttribute('class', 'badge');
     svg.setAttribute('role', 'img');
     if (title) {
@@ -1070,11 +1158,11 @@ BetterChatSettings.ready.then(function () {
       t.textContent = title;
       svg.appendChild(t);
     }
-    for (const [tag, attrs, text] of children) {
-      const el = document.createElementNS(SVG_NS, tag);
-      for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
-      if (text !== undefined) el.textContent = text;
-      svg.appendChild(el);
+    for (const [tag, attrs, text] of drawing.shapes) {
+      const shape = document.createElementNS(SVG_NS, tag);
+      for (const [name, value] of attrs) shape.setAttribute(name, value);
+      if (text !== undefined) shape.textContent = text;
+      svg.appendChild(shape);
     }
     return svg;
   }
@@ -1089,340 +1177,75 @@ BetterChatSettings.ready.then(function () {
     return img;
   }
 
-  const ROUNDED = (fill) => ['rect', { x: 1, y: 1, width: 14, height: 14, rx: 3, fill }];
-  const LABEL = (text, fill, size) => [
-    'text',
-    {
-      x: 8, y: 11.5, 'text-anchor': 'middle', 'font-size': size || 8,
-      'font-weight': 700, 'font-family': 'Arial, sans-serif', fill,
-    },
-    text,
-  ];
-
-  function subGifterColor(count) {
-    if (count >= 200) return '#ff3b3b';
-    if (count >= 100) return '#ff8c00';
-    if (count >= 50) return '#c85cff';
-    if (count >= 25) return '#3ea6ff';
-    return KICK_GREEN;
-  }
-
-  function renderChannelBadge(badge) {
-    const count = badge.count || 0;
-    const label = badge.text || badge.type;
-
-    switch (badge.type) {
-      case 'subscriber': {
-        const title = `Subscriber (${count} month${count === 1 ? '' : 's'})`;
-        // Highest tier the subscriber has reached, if the channel has custom badges.
-        let tier = null;
-        for (const b of subscriberBadges) if (b.months <= count) tier = b;
-        if (tier) return imgBadge(tier.src, title);
-        return svgBadge(
-          [['path', { d: 'M8 1.5l2 4.2 4.6.6-3.4 3.2.9 4.6L8 11.8l-4.1 2.3.9-4.6L1.4 6.3 6 5.7z', fill: KICK_GREEN }]],
-          title
-        );
-      }
-      case 'sub_gifter': {
-        const c = subGifterColor(count);
-        return svgBadge(
-          [
-            ['rect', { x: 2, y: 6, width: 12, height: 8.5, rx: 1.5, fill: c }],
-            ['rect', { x: 1, y: 3.5, width: 14, height: 3.5, rx: 1, fill: c }],
-            ['rect', { x: 7, y: 3.5, width: 2, height: 11, fill: '#0b0e0f' }],
-            ['path', { d: 'M8 3.5C6 3.5 4.5 1 6.5 1 7.5 1 8 2.5 8 3.5zm0 0c2 0 3.5-2.5 1.5-2.5C8.5 1 8 2.5 8 3.5z', fill: c }],
-          ],
-          `Sub Gifter (${count} gift${count === 1 ? '' : 's'})`
-        );
-      }
-      case 'moderator':
-        return svgBadge(
-          [
-            ['path', { d: 'M13.5 1.5L5.2 9.8l1 1L14.5 2.5z', fill: KICK_GREEN }],
-            ['path', { d: 'M4.2 10.8l1-1 1 1-1 1z', fill: KICK_GREEN }],
-            ['path', { d: 'M2 14l2.2-3.2 1 1L2 14z', fill: KICK_GREEN }],
-            ['path', { d: 'M4.5 8.5l3 3-1.2 1.2-3-3z', fill: '#2cb80f' }],
-          ],
-          label
-        );
-      case 'vip':
-        return svgBadge(
-          [
-            ['path', { d: 'M3 2h10l2.5 4L8 14.5 0.5 6z', fill: '#ff4fd8' }],
-            ['path', { d: 'M3 2l2 4h6l2-4', fill: '#ffb3ee' }],
-            ['path', { d: 'M5 6l3 8.5L11 6z', fill: '#ff85e4' }],
-          ],
-          label
-        );
-      case 'og':
-        return svgBadge(
-          [ROUNDED('#1f2a30'), ['rect', { x: 1, y: 1, width: 14, height: 14, rx: 3, fill: 'none', stroke: KICK_GREEN, 'stroke-width': 1 }], LABEL('OG', KICK_GREEN, 7)],
-          label
-        );
-      case 'broadcaster':
-        return svgBadge(
-          [
-            ROUNDED('#e5484d'),
-            ['rect', { x: 3, y: 5, width: 7, height: 6, rx: 1, fill: '#fff' }],
-            ['path', { d: 'M10 7l3-1.5v5L10 9z', fill: '#fff' }],
-          ],
-          label
-        );
-      case 'verified':
-        return svgBadge(
-          [
-            ['circle', { cx: 8, cy: 8, r: 7, fill: KICK_GREEN }],
-            ['path', { d: 'M4.5 8.2l2.3 2.3 4.7-4.7', fill: 'none', stroke: '#0b0e0f', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }],
-          ],
-          label
-        );
-      case 'founder':
-        return svgBadge([ROUNDED('#f5a524'), LABEL('F', '#0b0e0f', 9)], label);
-      case 'staff':
-        return svgBadge([ROUNDED(KICK_GREEN), LABEL('K', '#0b0e0f', 9)], label);
-      case 'bot':
-        return svgBadge([ROUNDED('#3ea6ff'), LABEL('BOT', '#fff', 5.5)], label);
-      default:
-        return svgBadge([['circle', { cx: 8, cy: 8, r: 6.5, fill: '#4a5058' }]], label);
-    }
-  }
-
-  function renderGlobalBadge(badge) {
-    let title = badge.name;
-    if (badge.name === 'level' && badge.level != null) title = `Level ${badge.level}`;
-    else title = badge.name.replace(/[_-]+/g, ' ');
-    return imgBadge(badge.image_url, title);
-  }
-
-  function channelBadgeKind(badge) {
-    return BADGE_KINDS.includes(badge.type) && badge.type !== 'level' && badge.type !== 'event'
-      ? badge.type
-      : 'other';
-  }
-
-  function globalBadgeKind(badge) {
-    return badge.name === 'level' ? 'level' : 'event';
+  function badgeEl(badge) {
+    const node = badge.svg ? svgBadge(badge.svg, badge.title) : imgBadge(badge.image, badge.title);
+    node.dataset.kind = badge.kind;
+    node.toggleAttribute('hidden', badge.hidden);
+    badgeKeys.set(node, badge.key);
+    return node;
   }
 
   function isBadgeHidden(kind) {
     return settings.hiddenBadges.includes(kind);
   }
 
-  // Hidden badges are still rendered (just not displayed) so toggling a
-  // kind back on in the settings restores them on existing messages.
-  function addBadge(wrap, el, kind) {
-    el.dataset.kind = kind;
-    el.toggleAttribute('hidden', isBadgeHidden(kind));
-    wrap.appendChild(el);
-  }
-
-  // Position of a kind in the viewer's order; anything unknown goes last.
-  function badgeRank(kind) {
-    const at = settings.badgeOrder.indexOf(kind);
-    return at === -1 ? BADGE_KINDS.length : at;
-  }
-
-  function renderBadges(msg) {
+  function renderBadges(badges) {
     const wrap = document.createElement('span');
     wrap.className = 'badges';
-    const bySort = (a, b) => (a.sort_order || 0) - (b.sort_order || 0);
-    const items = [];
-    for (const b of (msg.badges || []).slice().sort(bySort)) {
-      items.push({ el: renderChannelBadge(b), kind: channelBadgeKind(b) });
-    }
-    for (const b of (msg.badges_v2 || []).slice().sort(bySort)) {
-      items.push({ el: renderGlobalBadge(b), kind: globalBadgeKind(b) });
-    }
-    // Sort is stable, so two badges of the same kind keep Kick's own order.
-    items.sort((a, b) => badgeRank(a.kind) - badgeRank(b.kind));
-    for (const item of items) addBadge(wrap, item.el, item.kind);
+    for (const badge of badges) wrap.appendChild(badgeEl(badge));
     return wrap;
   }
 
-  // Re-orders the badges already on screen when the setting changes, so it
-  // does not only apply to messages that arrive next.
-  function sortBadgeWrap(wrap) {
+  // The viewer moved or hid a kind: the same badge elements, shown or hidden
+  // and put in the new order, rather than drawn again.
+  function patchBadges(row, badges) {
+    const wrap = row.querySelector('.badges');
+    if (!wrap) return;
+    const byKey = new Map();
+    for (const node of wrap.children) byKey.set(badgeKeys.get(node), node);
+    const ordered = badges.map((badge) => {
+      const node = byKey.get(badge.key) || badgeEl(badge);
+      node.toggleAttribute('hidden', badge.hidden);
+      return node;
+    });
     const current = [...wrap.children];
-    if (current.length < 2) return;
-    const ranked = current.map((node, at) => ({ node, at, rank: badgeRank(node.dataset.kind) }));
-    ranked.sort((a, b) => a.rank - b.rank || a.at - b.at);
-    if (ranked.every((item, at) => item.node === current[at])) return;
-    wrap.append(...ranked.map((item) => item.node));
+    if (ordered.length === current.length && ordered.every((node, at) => node === current[at])) return;
+    wrap.append(...ordered);
   }
 
   // ---------------------------------------------------------------------
   // Message content
-  // ---------------------------------------------------------------------
-
-  // Emote placeholders are parsed in kick.js (parseContent), where the syntax
-  // is tested. This is only for comparing messages: "[emote:1:a]
-  // [emote:1:a][emote:1:a]" -> "[emote:1:a]", so the repeat counter treats a
-  // run of one emote as the same message however long the run is.
-  const REPEATED_EMOTE = /(\[emote:(\d+):[^\]]*\])(?:\s*\[emote:\2:[^\]]*\])+/g;
-
-  function collapseRepeatedEmotes(content) {
-    return content.replace(REPEATED_EMOTE, '$1');
-  }
-
-  // @mentions: "@name" not glued to a preceding word character.
-  const MENTION_PATTERN = /(^|[^\w])@([\w-]{1,30})/g;
-
-  function mentionsMe(text) {
-    if (!settings.mentionMe) return false;
-    const me = settings.mentionMe.toLowerCase();
-    MENTION_PATTERN.lastIndex = 0;
-    let m;
-    while ((m = MENTION_PATTERN.exec(text)) !== null) {
-      if (m[2].toLowerCase() === me) return true;
-    }
-    return false;
-  }
-
-  // ---------------------------------------------------------------------
-  // Is that "@something" a username?
   //
-  // Usually not: people write "@everyone", "@ 8pm", "@ the mods". So an
-  // "@word" is rendered as plain text and only becomes a mention - green,
-  // and clickable for a user card - once the name is known to be a real one.
-  //
-  // Names the page has already seen for real (anyone who has spoken, been
-  // moderated, been replied to, or pinned a message) need no asking. Anything
-  // else is asked about once, one request at a time, and both answers are
-  // remembered so a name typed over and over costs a single lookup.
-  // ---------------------------------------------------------------------
-
-  const MENTION_CHECK_SPACING_MS = 400;
-  const MENTION_QUEUE_CAP = 40;
-  const MENTION_STATUS_CAP = 500;
-  const KNOWN_USERS_CAP = 5000;
-
-  const knownUsers = new Set();          // lowercase names seen as real users
-  const mentionStatus = new Map();       // lowercase name -> true | false
-  const mentionQueue = [];               // names waiting to be asked about
-  const mentionQueued = new Set();
-  // Names with an unstyled candidate somewhere on the page. Kept so that a
-  // new chatter, which is the common case by far, costs no DOM work at all
-  // unless someone actually typed their name earlier.
-  const awaitingMentions = new Set();
-  let mentionTimer = null;
-
-  // Every real username the page comes across, from any payload Kick sends.
-  function noteUser(name) {
-    const key = String(name || '').trim().toLowerCase();
-    if (!key || knownUsers.has(key)) return;
-    knownUsers.add(key);
-    while (knownUsers.size > KNOWN_USERS_CAP) {
-      knownUsers.delete(knownUsers.values().next().value);
-    }
-    // Someone may have been mentioned before they ever showed up.
-    markMentionsVerified(key);
-  }
-
-  function isKnownUser(key) {
-    return knownUsers.has(key) || mentionStatus.get(key) === true;
-  }
-
-  // Candidates live in the message list, the pinned banner and the user card,
-  // so the whole document is searched. The pattern below only matches word
-  // characters and hyphens, so the name is always safe in a selector.
-  function markMentionsVerified(key) {
-    if (!awaitingMentions.delete(key)) return;
-    for (const node of document.querySelectorAll(`.mention-candidate[data-name="${key}"]`)) {
-      node.classList.add('mention');
-    }
-  }
-
-  function rememberMentionStatus(key, isUser) {
-    mentionStatus.set(key, isUser);
-    while (mentionStatus.size > MENTION_STATUS_CAP) {
-      mentionStatus.delete(mentionStatus.keys().next().value);
-    }
-    if (isUser) markMentionsVerified(key);
-    else awaitingMentions.delete(key); // settled: it stays plain text
-  }
-
-  // `name` is what was typed, which is what Kick is asked about; `key` is its
-  // lowercase form, which is what everything here is keyed on.
-  function queueMentionCheck(key, name) {
-    if (!slug || mentionStatus.has(key) || mentionQueued.has(key) || knownUsers.has(key)) return;
-    mentionQueued.add(key);
-    mentionQueue.push({ key, name });
-    // Spam can name a lot of things that are not users; the oldest waiting
-    // ones matter least.
-    while (mentionQueue.length > MENTION_QUEUE_CAP) {
-      mentionQueued.delete(mentionQueue.shift().key);
-    }
-    pumpMentionQueue();
-  }
-
-  // One lookup at a time, spaced out: this runs off whatever chat types, so
-  // it must never turn into a burst of requests at Kick.
-  function pumpMentionQueue() {
-    if (mentionTimer || !mentionQueue.length) return;
-    mentionTimer = setTimeout(async () => {
-      mentionTimer = null;
-      const next = mentionQueue.shift();
-      if (next) {
-        mentionQueued.delete(next.key);
-        try {
-          rememberMentionStatus(next.key, !!(await kick.verifyUser(slug, next.name)));
-        } catch (_e) {
-          // Kick unreachable or unhappy: leave the name unresolved rather
-          // than remembering a "no" that was never really an answer.
-        }
-      }
-      pumpMentionQueue();
-    }, MENTION_CHECK_SPACING_MS);
-  }
-
-  // Plain text with @mentions wrapped in spans that are only styled once the
-  // name behind them is known to be a user.
-  function appendTextWithMentions(container, text) {
-    MENTION_PATTERN.lastIndex = 0;
-    let lastIndex = 0;
-    let match;
-    while ((match = MENTION_PATTERN.exec(text)) !== null) {
-      const start = match.index + match[1].length;
-      if (start > lastIndex) {
-        container.appendChild(document.createTextNode(text.slice(lastIndex, start)));
-      }
-      const name = match[2];
-      const key = name.toLowerCase();
-      const tag = document.createElement('span');
-      tag.className = 'mention-candidate';
-      tag.dataset.name = key;
-      tag.textContent = `@${name}`;
-      if (isKnownUser(key)) {
-        tag.classList.add('mention');
-      } else if (mentionStatus.get(key) !== false) {
-        awaitingMentions.add(key);
-        while (awaitingMentions.size > MENTION_STATUS_CAP) {
-          awaitingMentions.delete(awaitingMentions.values().next().value);
-        }
-        queueMentionCheck(key, name);
-      }
-      container.appendChild(tag);
-      lastIndex = MENTION_PATTERN.lastIndex;
-    }
-    if (lastIndex < text.length) {
-      container.appendChild(document.createTextNode(text.slice(lastIndex)));
-    }
-  }
-
-  // Builds message content as safe DOM nodes (text nodes + <img> elements)
-  // rather than via innerHTML - chat content is untrusted, attacker-
+  // Parts come from the session (or session.parts() for text this page draws
+  // on its own), built here as safe DOM nodes - text nodes and <img> elements
+  // - rather than via innerHTML: chat content is untrusted, attacker-
   // controllable input (any Kick user can type it), so it must never be
   // parsed as HTML.
-  function appendMessageContent(container, content) {
-    const parts = BetterChatKick.parseContent(content, { combine: settings.collapseEmotes });
+  //
+  // An "@word" is a mention candidate, only styled as a mention - green, and
+  // clickable for a user card - once the session says the name is a real
+  // user, either straight away or later with a `verify`.
+  // ---------------------------------------------------------------------
+
+  function renderParts(container, parts) {
     for (const part of parts) {
-      if (part.type === 'text') {
-        appendTextWithMentions(container, part.text);
+      if (part.t === 'text') {
+        container.appendChild(document.createTextNode(part.text));
         continue;
       }
+      if (part.t === 'mention') {
+        const tag = document.createElement('span');
+        tag.className = 'mention-candidate';
+        tag.dataset.name = part.key;
+        tag.textContent = `@${part.name}`;
+        if (part.verified) tag.classList.add('mention');
+        container.appendChild(tag);
+        continue;
+      }
+      if (part.t !== 'emote') continue;
       const img = document.createElement('img');
       img.className = 'emote';
-      img.src = `https://files.kick.com/emotes/${part.id}/fullsize`;
+      img.src = part.url;
       img.alt = part.name;
       img.title = part.name;
       if (part.count === 1) {
@@ -1439,17 +1262,30 @@ BetterChatSettings.ready.then(function () {
     }
   }
 
-  // Only accept a plain hex color from the payload - it ends up in a style
-  // attribute, so anything else is dropped rather than trusted.
-  const HEX_COLOR = /^#[0-9a-f]{3,8}$/i;
+  function appendMessageContent(container, content) {
+    renderParts(container, session.parts(content));
+  }
 
-  function renderReply(replyTo) {
-    noteUser(replyTo.username);
+  // Candidates live in the message list, the pinned banner and the user card,
+  // so the whole document is searched - and the rows still queued for the
+  // next frame, which are not in it yet. The session says this once per name,
+  // so a row that missed it would stay unverified for good. Keys only ever
+  // hold word characters and hyphens, so the name is always safe in a
+  // selector.
+  function markMentionsVerified(key) {
+    const selector = `.mention-candidate[data-name="${key}"]`;
+    for (const node of document.querySelectorAll(selector)) node.classList.add('mention');
+    for (const row of pendingRows) {
+      for (const node of row.querySelectorAll(selector)) node.classList.add('mention');
+    }
+  }
+
+  function renderReply(reply) {
     const line = document.createElement('div');
     line.className = 'reply';
     // Full original text for the hover tooltip when the line is truncated.
-    line.dataset.full = replyTo.content || '';
-    line.dataset.user = replyTo.username || '?';
+    line.dataset.full = reply.text;
+    line.dataset.user = reply.username || '?';
     const arrow = document.createElement('span');
     arrow.className = 'arrow';
     arrow.textContent = '↩';
@@ -1457,56 +1293,44 @@ BetterChatSettings.ready.then(function () {
     line.append('Replying to ');
     const user = document.createElement('span');
     user.className = 'user';
-    user.textContent = `@${replyTo.username || '?'}`;
+    user.textContent = `@${reply.username || '?'}`;
     line.appendChild(user);
     line.append(': ');
-    appendMessageContent(line, replyTo.content || '');
+    renderParts(line, reply.parts);
     return line;
   }
 
-  function appendMessage(msg) {
-    recordUserHistory(msg);
-
-    // With emotes combined, "KEKW KEKW KEKW" and "KEKW KEKW" draw as the same
-    // emote with a different count, so they count as the same message too.
-    const compared = settings.collapseEmotes ? collapseRepeatedEmotes(msg.content) : msg.content;
-    const { key: repeatKey, repeat } = repeatState(msg.username, compared);
-    // A repeat is added to the copy already on screen. If that copy is gone -
-    // trimmed out of history, say - countRepeat says so and this one is drawn
-    // fresh instead.
-    if (repeat && countRepeat(repeatKey)) return;
-    const content = msg.content;
-
+  function messageRow(msg) {
     const row = document.createElement('div');
     row.className = 'msg';
-    row.dataset.id = msg.id;
-    row.dataset.user = (msg.username || '').toLowerCase();
-    row.dataset.text = content;
+    row.dataset.id = msg.msgId;
+    row.dataset.user = msg.user;
+    row.dataset.text = msg.text;
     // Replying needs the sender exactly as Kick spells them, where data-user
     // is lowercased for matching, and their numeric id. Both are only set
     // when there is something to set: the reply button reads them, so a row
     // without them offers no button rather than a broken one.
     if (msg.username) row.dataset.username = msg.username;
-    if (msg.sender_id != null) row.dataset.senderId = String(msg.sender_id);
-    if (mentionsMe(content)) row.classList.add('mentions-me');
+    if (msg.senderId != null) row.dataset.senderId = String(msg.senderId);
+    if (msg.mentionsMe) row.classList.add('mentions-me');
 
-    if (msg.reply_to) row.appendChild(renderReply(msg.reply_to));
+    if (msg.reply) row.appendChild(renderReply(msg.reply));
 
     const ts = document.createElement('span');
     ts.className = 'ts';
-    if (msg.created_at) {
-      ts.dataset.time = msg.created_at;
-      ts.textContent = formatTime(msg.created_at);
+    if (msg.createdAt) {
+      ts.dataset.time = msg.createdAt;
+      ts.textContent = formatTime(msg.createdAt);
     }
     row.appendChild(ts);
 
-    row.appendChild(renderBadges(msg));
+    row.appendChild(renderBadges(msg.badges));
 
     const user = document.createElement('span');
     user.className = 'user';
     user.textContent = msg.username;
-    if (HEX_COLOR.test(msg.color || '')) user.dataset.kickColor = msg.color;
-    user.style.color = usernameColor(msg.color);
+    if (msg.kickColor) user.dataset.kickColor = msg.kickColor;
+    user.style.color = msg.color;
     row.appendChild(user);
 
     const sep = document.createElement('span');
@@ -1516,27 +1340,26 @@ BetterChatSettings.ready.then(function () {
 
     const body = document.createElement('span');
     body.className = 'content';
-    appendMessageContent(body, content);
+    renderParts(body, msg.parts);
     row.appendChild(body);
 
     const tag = document.createElement('span');
     tag.className = 'deleted-tag';
     row.appendChild(tag);
 
+    // A row is sent as it stands, so a count or a deletion already on it is
+    // drawn too (the session never sends one today, but the protocol allows it).
+    if (msg.repeats > 1) showRepeats(row, msg.repeats);
+    if (msg.deleted) markDeleted(row, msg.deleted);
+
     // Only where they can actually work, so ordinary viewers carry no extra
     // nodes per message. CSS reveals the bar on hover.
     // Pinning hands Kick the message back whole, so what Kick sent has to be
-    // kept, not just the few fields the row carries. Only while the controls
-    // are on, and only for as long as the row lives.
+    // kept, not just the few fields the row carries. The session only sends
+    // it while the controls are on, and it lives only as long as the row.
     if (modAvailable && msg.raw) rememberForPin(row, msg.raw);
     fitActions(row);
-
-    // This row now stands for the key, so a later repeat counts onto it.
-    // Registered even with counting off, so turning it on mid-stream works on
-    // the messages already there.
-    if (repeatKey) repeatRows.set(repeatKey, row);
-
-    appendRow(row);
+    return row;
   }
 
   // ---------------------------------------------------------------------
@@ -1593,66 +1416,48 @@ BetterChatSettings.ready.then(function () {
   // ---------------------------------------------------------------------
   // User card (click a username)
   //
-  // Profile / follow / sub data comes straight from Kick's API (kick.js,
-  // cached for a few minutes). Message history is what
-  // this page has seen since it opened, kept per user regardless of the
-  // on-screen history cap or the repeat filter.
+  // Profile / follow / sub data comes from Kick's API through the session
+  // (cached for a few minutes). Message history is what the session has seen
+  // since it started, kept per user regardless of the on-screen history cap
+  // or the repeat filter.
   // ---------------------------------------------------------------------
 
   const userCardEl = document.getElementById('userCard');
-  const userHistory = new Map(); // lowercase username -> [{content, created_at}]
-  const userCardCache = new Map(); // lowercase username -> {data, fetchedAt}
+  // The most lines a card shows; the session keeps as many per user.
   const HISTORY_PER_USER = 25;
-  // Both maps are keyed by username, so on a big channel they would other-
-  // wise grow with every distinct chatter for as long as the tab is open -
-  // thousands an hour, none of it ever released. Both are kept in
-  // least-recently-used order (re-inserting moves a key to the end) and
-  // trimmed from the front.
-  const HISTORY_USERS_CAP = 500;
-  const USER_CARD_CACHE_CAP = 50;
-  const USER_CARD_TTL_MS = 3 * 60 * 1000;
   let userCardRequest = 0;
   // Set while a card is open, so a message from that user can be dropped into
   // the card as it arrives rather than only being there next time it is
-  // opened. Cleared when the card closes or is re-rendered for someone else.
+  // opened (the session sends those as `history` while it is watching them).
+  // Cleared when the card closes or is re-rendered for someone else.
   let openUserKey = null;
   let openUserHistoryEl = null;
   let openUserCountEl = null;
 
-  function recordUserHistory(msg) {
-    const key = (msg.username || '').toLowerCase();
-    if (!key) return;
-    noteUser(key);
-    const list = userHistory.get(key) || [];
-    list.push({ content: msg.content, created_at: msg.created_at });
-    if (list.length > HISTORY_PER_USER) list.shift();
-    userHistory.delete(key);
-    userHistory.set(key, list);
-    while (userHistory.size > HISTORY_USERS_CAP) {
-      userHistory.delete(userHistory.keys().next().value);
-    }
-    if (key === openUserKey) appendOpenCardMessage(key, msg);
+  function watchUser(key) {
+    openUserKey = key;
+    session.watchUser(key);
   }
 
   // Newest first, at the top of the list under the header - the same order
   // renderUserCard lays the history out in. Kept to the per-user cap so a card
   // left open on a busy chatter does not grow without bound.
-  function appendOpenCardMessage(key, msg) {
+  function appendOpenCardMessage(entry, total) {
     if (userCardEl.hidden || !openUserHistoryEl) return;
     const none = openUserHistoryEl.querySelector('.none');
     if (none) none.remove();
     const header = openUserHistoryEl.querySelector('.k');
-    openUserHistoryEl.insertBefore(userHistoryLine(msg), header ? header.nextSibling : null);
+    openUserHistoryEl.insertBefore(userHistoryLine(entry), header ? header.nextSibling : null);
     const lines = openUserHistoryEl.querySelectorAll('.line');
     for (let i = HISTORY_PER_USER; i < lines.length; i += 1) lines[i].remove();
-    if (openUserCountEl) openUserCountEl.textContent = String((userHistory.get(key) || []).length);
+    if (openUserCountEl) openUserCountEl.textContent = String(total);
   }
 
-  function userHistoryLine(m) {
+  function userHistoryLine(entry) {
     const line = el('div', 'line');
-    line.appendChild(el('span', 't', timeOnly(m.created_at)));
+    line.appendChild(el('span', 't', timeOnly(entry.createdAt)));
     const c = el('span', 'c');
-    appendMessageContent(c, m.content || '');
+    renderParts(c, entry.parts);
     line.appendChild(c);
     return line;
   }
@@ -1700,21 +1505,25 @@ BetterChatSettings.ready.then(function () {
   function closeUserCard() {
     userCardEl.hidden = true;
     userCardEl.replaceChildren();
-    openUserKey = null;
+    watchUser(null);
     openUserHistoryEl = null;
     openUserCountEl = null;
   }
 
+  // `card` is the session's card data (docs/core-protocol.md), or null when
+  // Kick could not be asked.
   function renderUserCard(username, card) {
     userCardEl.replaceChildren();
-    openUserKey = username.toLowerCase();
+    watchUser(username.toLowerCase());
     openUserCountEl = null;
+    // Newest first. Read once, for the count and the lines alike.
+    const lines = session.userHistory(openUserKey);
 
     const head = el('div', 'uc-head');
     const avatar = document.createElement('img');
     avatar.className = 'uc-avatar';
     avatar.alt = '';
-    if (card && card.profile_pic) avatar.src = card.profile_pic;
+    if (card && card.profilePic) avatar.src = card.profilePic;
     head.appendChild(avatar);
 
     const who = el('div', 'uc-who');
@@ -1726,13 +1535,13 @@ BetterChatSettings.ready.then(function () {
     link.textContent = (card && card.username) || username;
     name.appendChild(link);
     who.appendChild(name);
-    if (card && card.followers_count != null) {
-      who.appendChild(el('div', 'uc-followers', `${Number(card.followers_count).toLocaleString()} followers`));
+    if (card && card.followers != null) {
+      who.appendChild(el('div', 'uc-followers', `${Number(card.followers).toLocaleString()} followers`));
     }
     const flags = [];
-    if (card && card.is_channel_owner) flags.push('Broadcaster');
-    if (card && card.is_moderator) flags.push('Moderator');
-    if (card && card.is_staff) flags.push('Kick staff');
+    if (card && card.isChannelOwner) flags.push('Broadcaster');
+    if (card && card.isModerator) flags.push('Moderator');
+    if (card && card.isStaff) flags.push('Kick staff');
     if (card && card.verified) flags.push('Verified');
     if (card && card.banned) flags.push('Banned');
     if (flags.length) who.appendChild(el('div', 'uc-flags', flags.join(' · ')));
@@ -1748,19 +1557,19 @@ BetterChatSettings.ready.then(function () {
 
     if (card) {
       const facts = el('div', 'uc-facts');
-      const months = card.subscribed_for;
+      const months = card.subscribedFor;
       facts.appendChild(fact('Subscribed for', months ? `${months} month${months === 1 ? '' : 's'}` : 'Not subscribed'));
-      facts.appendChild(fact('Followed', card.following_since ? formatDate(card.following_since) : 'Not following'));
-      facts.appendChild(fact('Joined on', card.created_at ? formatDate(card.created_at) : '—'));
-      const countFact = fact('Messages here', String((userHistory.get(openUserKey) || []).length));
+      facts.appendChild(fact('Followed', card.followingSince ? formatDate(card.followingSince) : 'Not following'));
+      facts.appendChild(fact('Joined on', card.createdAt ? formatDate(card.createdAt) : '—'));
+      const countFact = fact('Messages here', String(lines.length));
       openUserCountEl = countFact.querySelector('.v');
       facts.appendChild(countFact);
       userCardEl.appendChild(facts);
 
-      const badges = renderBadges({ badges: card.badges, badges_v2: card.badges_v2 });
+      // The card shows every badge the user has, whatever the chat filter
+      // hides: the session sends none of them hidden.
+      const badges = renderBadges(card.badges);
       badges.className = 'uc-badges';
-      // The card shows every badge the user has, whatever the chat filter hides.
-      for (const b of badges.querySelectorAll('.badge')) b.removeAttribute('hidden');
       userCardEl.appendChild(badges);
 
       if (card.bio) userCardEl.appendChild(el('div', 'uc-bio', card.bio));
@@ -1770,7 +1579,6 @@ BetterChatSettings.ready.then(function () {
 
     const history = el('div', 'uc-history');
     history.appendChild(el('div', 'k', 'Recent messages'));
-    const lines = (userHistory.get(openUserKey) || []).slice().reverse();
     if (!lines.length) {
       history.appendChild(el('div', 'none', 'Nothing since this page was opened.'));
     }
@@ -1783,7 +1591,7 @@ BetterChatSettings.ready.then(function () {
   function showUserCardStatus(username, text, isError) {
     userCardEl.replaceChildren();
     // No live history element while loading; renderUserCard sets these again.
-    openUserKey = null;
+    watchUser(null);
     openUserHistoryEl = null;
     openUserCountEl = null;
     const head = el('div', 'uc-head');
@@ -1806,35 +1614,27 @@ BetterChatSettings.ready.then(function () {
     const requestId = ++userCardRequest;
 
     userCardEl.hidden = false;
-    const cached = userCardCache.get(key);
-    if (cached && Date.now() - cached.fetchedAt < USER_CARD_TTL_MS) {
-      userCardCache.delete(key);
-      userCardCache.set(key, cached);
-      renderUserCard(username, cached.data);
+    // A card fetched in the last few minutes is drawn at once, with no
+    // "Loading..." in between.
+    const cached = session.cachedUserCard(key);
+    if (cached) {
+      renderUserCard(username, cached);
       placeUserCard(x, y);
       return;
     }
-    if (cached) userCardCache.delete(key);
 
     showUserCardStatus(username, 'Loading...');
     placeUserCard(x, y);
 
-    let card = null;
-    let error = null;
-    try {
-      card = await kick.userCard(slug, username);
-    } catch (e) {
-      error = e && e.status === 404 ? 'Kick has no record of this user in this chat.' : 'Could not load this user right now.';
-    }
+    const { card, error: failure } = await session.userCard(username);
+    const error = failure === 'not_found'
+      ? 'Kick has no record of this user in this chat.'
+      : 'Could not load this user right now.';
 
     // A newer click (or a close) happened while we were fetching.
     if (requestId !== userCardRequest || userCardEl.hidden) return;
 
     if (card) {
-      userCardCache.set(key, { data: card, fetchedAt: Date.now() });
-      while (userCardCache.size > USER_CARD_CACHE_CAP) {
-        userCardCache.delete(userCardCache.keys().next().value);
-      }
       renderUserCard(username, card);
     } else {
       // Still useful without Kick's data: show what we have locally.
@@ -1895,12 +1695,6 @@ BetterChatSettings.ready.then(function () {
   // answers and nothing appears.
   // ---------------------------------------------------------------------
 
-  // Who is banned or timed out right now, as this page has seen it. Kick's
-  // user card is cached for a few minutes on both sides, so straight after a
-  // moderator acts this is the only source that is already right - and a
-  // timeout has to offer Unban just as a ban does.
-  const bannedNow = new Set(); // lowercase usernames
-
   const MOD_CHANNEL = 'bck-mod';
   const MOD_PARENT_ORIGIN = 'https://kick.com';
   const MOD_TIMEOUT_MS = 10000;
@@ -1948,6 +1742,9 @@ BetterChatSettings.ready.then(function () {
   function applyModerationState() {
     document.body.classList.toggle('can-moderate', modAvailable);
     document.body.classList.toggle('can-reply', replyAvailable);
+    // Pinning hands Kick back the whole message, so while the controls are
+    // on the session sends it with each new row.
+    session.setIncludeRaw(modAvailable);
   }
 
   async function initModeration() {
@@ -2003,7 +1800,7 @@ BetterChatSettings.ready.then(function () {
     const reply = await askParent({ type: 'action', ...payload });
     if (reply && reply.ok) return true;
 
-    systemLine(`could not ${describe}: ${(reply && reply.error) || 'the extension did not answer'}`, true);
+    session.note(`could not ${describe}: ${(reply && reply.error) || 'the extension did not answer'}`, true);
     if (reply && reply.status === 403) {
       // Not a moderator here. Stop offering controls that cannot work, and
       // take the setting away with them - there is nothing to configure.
@@ -2028,7 +1825,11 @@ BetterChatSettings.ready.then(function () {
 
   function renderModTools(username, card) {
     const wrap = el('div', 'uc-mod');
-    const banned = !!(card && card.banned) || bannedNow.has(username.toLowerCase());
+    // Who is banned or timed out right now, as the session has seen it. Kick's
+    // user card is cached for a few minutes on both sides, so straight after a
+    // moderator acts that is the only source that is already right - and a
+    // timeout has to offer Unban just as a ban does.
+    const banned = !!(card && card.banned) || session.isBanned(username);
 
     if (banned) {
       const unban = modButton('Unban', `Lift the ban on ${username}`, 'uc-mod-btn danger');
@@ -2333,7 +2134,7 @@ BetterChatSettings.ready.then(function () {
       },
     });
     if (reply && reply.ok) return;
-    systemLine(
+    session.note(
       `could not reply: ${(reply && reply.error) || 'the extension did not answer'}`,
       true
     );
@@ -2430,7 +2231,7 @@ BetterChatSettings.ready.then(function () {
     showReplyArmed({ armed: false });
     const reason = msg.error || 'Kick refused it';
     const text = msg.content ? `: ${msg.content}` : '';
-    systemLine(`reply not sent (${reason})${text}`, true);
+    session.note(`reply not sent (${reason})${text}`, true);
   }
 
   // Escape cancels the reply, but only once the settings panel and the user
@@ -2441,59 +2242,6 @@ BetterChatSettings.ready.then(function () {
     if (!overlay.hidden || !userCardEl.hidden) return;
     cancelReply();
   });
-
-  function markDeleted(row, reason) {
-    const mode = settings.deletedMessages;
-    if (mode === 'keep') return;
-    if (mode === 'remove') {
-      row.remove();
-      return;
-    }
-    row.classList.add('deleted');
-    const tag = row.querySelector('.deleted-tag');
-    if (tag && reason) tag.textContent = reason;
-  }
-
-  function durationText(minutes) {
-    if (minutes == null) return '';
-    if (minutes >= 1440 && minutes % 1440 === 0) return `${minutes / 1440} day${minutes === 1440 ? '' : 's'}`;
-    if (minutes >= 60 && minutes % 60 === 0) return `${minutes / 60} hour${minutes === 60 ? '' : 's'}`;
-    return `${minutes} minute${minutes === 1 ? '' : 's'}`;
-  }
-
-  function onMessageDeleted(ev) {
-    const row = messagesEl.querySelector(`.msg[data-id="${CSS.escape(String(ev.message_id))}"]`);
-    if (row) markDeleted(row, 'deleted');
-  }
-
-  function onChatCleared() {
-    for (const row of messagesEl.querySelectorAll('.msg')) markDeleted(row, 'chat cleared');
-    if (settings.showModeration) eventLine('mod', '🧹', ['Chat was cleared by a moderator']);
-  }
-
-  function onUserBanned(ev) {
-    const name = (ev.username || '').toLowerCase();
-    // Before the showModeration check: whether the line is drawn is a display
-    // choice, but who is banned decides which button the user card offers.
-    if (name) bannedNow.add(name);
-    for (const row of messagesEl.querySelectorAll('.msg')) {
-      if (row.dataset.user === name) markDeleted(row, ev.permanent ? 'banned' : 'timed out');
-    }
-    if (!settings.showModeration) return;
-    const by = ev.by ? [' by ', { user: ev.by }] : [];
-    if (ev.permanent) {
-      eventLine('mod', '🔨', [{ user: ev.username }, ' was banned', ...by]);
-    } else {
-      eventLine('mod', '⏳', [{ user: ev.username }, ` was timed out for ${durationText(ev.duration_min)}`, ...by]);
-    }
-  }
-
-  function onUserUnbanned(ev) {
-    bannedNow.delete((ev.username || '').toLowerCase());
-    if (!settings.showModeration) return;
-    const by = ev.by ? [' by ', { user: ev.by }] : [];
-    eventLine('mod', '🔓', [{ user: ev.username }, ev.permanent ? ' was unbanned' : "'s timeout was lifted", ...by]);
-  }
 
   // ---------------------------------------------------------------------
   // Pinned message banner
@@ -2518,20 +2266,19 @@ BetterChatSettings.ready.then(function () {
   // the collapsePinned setting, so the viewer's choice never sticks to a pin
   // they have not seen.
   let pinHidden = false;
-  let pinTimer = null;
   const unpinBtn = document.getElementById('unpinMsg');
 
-  function showPin(ev) {
-    const msg = ev.message || {};
-    noteUser(msg.username);
+  // A pin from the session. It also says when the pin runs out (a `pin` of
+  // null), so there is no timer here.
+  function showPin(pin) {
     pinContent.replaceChildren();
     const user = document.createElement('span');
     user.className = 'user';
-    user.textContent = msg.username || '?';
-    user.style.color = usernameColor(msg.color);
+    user.textContent = pin.username || '?';
+    user.style.color = pin.color;
     pinContent.appendChild(user);
     pinContent.append(': ');
-    appendMessageContent(pinContent, msg.content || '');
+    renderParts(pinContent, pin.parts);
 
     pinnedActive = true;
     // Each new pin starts in the state the viewer asked for: open, or
@@ -2539,25 +2286,12 @@ BetterChatSettings.ready.then(function () {
     pinHidden = settings.collapsePinned;
     // A new pin is a new thing to unpin, whatever became of the last one.
     unpinBtn.disabled = false;
-    clearTimeout(pinTimer);
-    // Expiry is an absolute timestamp from the server (Kick's pins default
-    // to 20 hours). Cap the timer: browsers clamp very long timeouts.
-    const expires = ev.expires_at ? new Date(ev.expires_at).getTime() : NaN;
-    if (!Number.isNaN(expires)) {
-      const remaining = expires - Date.now();
-      if (remaining <= 0) {
-        pinnedActive = false;
-      } else {
-        pinTimer = setTimeout(clearPin, Math.min(remaining, 0x7fffffff));
-      }
-    }
     applyPinVisibility();
   }
 
   function clearPin() {
     pinnedActive = false;
     pinHidden = false;
-    clearTimeout(pinTimer);
     applyPinVisibility();
   }
 
@@ -2584,79 +2318,10 @@ BetterChatSettings.ready.then(function () {
   });
 
   // ---------------------------------------------------------------------
-  // Chat events (subs, gifts, hosts)
-  // ---------------------------------------------------------------------
-
-  // Grouped, because a host can bring four figures of viewers and "1204
-  // viewers" is a number you have to count the digits of.
-  const plural = (n, word) => `${Number(n).toLocaleString()} ${word}${n === 1 ? '' : 's'}`;
-
-  function onSubscription(ev) {
-    if (!settings.showSubs) return;
-    const months = ev.months || 1;
-    eventCard(
-      'sub',
-      '★',
-      [{ user: ev.username }, ' subscribed'],
-      // A resub's months are the point of it; a first sub has no number, and
-      // saying "1 month" of someone who just arrived reads as a downgrade.
-      months > 1 ? [plural(months, 'month')] : ['new subscriber']
-    );
-  }
-
-  function onGiftedSubs(ev) {
-    if (!settings.showGifts) return;
-    const recipients = ev.recipients || [];
-    const detail = [plural(recipients.length, 'sub')];
-    // Named while the list is short enough to read. Kick sends up to 25 in one
-    // event, and twenty-five names is a wall, not information.
-    if (recipients.length && recipients.length <= 5) {
-      detail.push(' to ');
-      recipients.forEach((name, i) => {
-        if (i > 0) detail.push(', ');
-        detail.push({ user: name });
-      });
-    }
-    eventCard('gift', '🎁', [{ user: ev.gifter || 'Someone' }, ' gifted subs'], detail);
-  }
-
-  // Kicks are Kick's paid gifts. The amount is the number of Kicks spent and
-  // is the whole point, so it leads; the gift's own name says which one it
-  // was. A message only comes with the larger gifts - the small ones have a
-  // character limit of zero - so it is shown where there is one.
-  function onKicks(ev) {
-    if (!settings.showKicks) return;
-    const detail = [];
-    if (ev.amount) detail.push(plural(ev.amount, 'Kick'));
-    if (ev.gift) detail.push(detail.length ? ` - ${ev.gift}` : ev.gift);
-    if (ev.message) detail.push(`: ${ev.message}`);
-    eventCard('kicks', '⚡', [{ user: ev.username }, ' sent Kicks'], detail);
-  }
-
-  // Channel-point redemptions. The reward's name is the point of it and leads
-  // the detail line; some rewards ask the redeemer to type something, and that
-  // is shown after it where there is one, the way a Kicks message is.
-  function onReward(ev) {
-    if (!settings.showRewards) return;
-    const detail = [];
-    if (ev.reward) detail.push(ev.reward);
-    if (ev.input) detail.push(detail.length ? `: ${ev.input}` : ev.input);
-    eventCard('reward', '🎟️', [{ user: ev.username || 'Someone' }, ' redeemed'], detail);
-  }
-
-  function onHost(ev) {
-    if (!settings.showHosts) return;
-    const detail = [];
-    // The viewer count is the hosting channel's own: the viewers brought over.
-    if (ev.viewers) detail.push(plural(ev.viewers, 'viewer'));
-    if (ev.message) detail.push(detail.length ? ` - ${ev.message}` : ev.message);
-    eventCard('host', '📺', [{ user: ev.host_username }, ' is hosting'], detail);
-  }
-
-  // ---------------------------------------------------------------------
   // Connection / stream status
   //
-  // Three things can make a chat go quiet, and the pill says which:
+  // Three things can make a chat go quiet, and the pill says which (the
+  // session works out which, and what to say):
   //   - the WebSocket to Kick's feed is down (kick.js reconnects with backoff)
   //   - the socket is up but Kick hasn't confirmed the chat subscription
   //   - the channel simply isn't live (Kick's StreamerIsLive / StopStream
@@ -2664,63 +2329,17 @@ BetterChatSettings.ready.then(function () {
   // ---------------------------------------------------------------------
 
   const statusPill = document.getElementById('statusPill');
-  const conn = { browser: false, relay: false, live: null, joinedOnce: false };
 
-  function updateStatus() {
-    let text = '';
-    let cls = '';
-    if (!conn.browser) {
-      text = conn.joinedOnce ? 'Connection to Kick lost, reconnecting...' : 'Connecting to Kick...';
-      cls = 'warn';
-    } else if (!conn.relay) {
-      text = 'Waiting for Kick to confirm the chat subscription...';
-      cls = 'warn';
-    } else if (conn.live === false) {
-      text = `${slug} is offline - chat still works`;
-      cls = 'offline';
+  function showStatus(status) {
+    if (status.state === 'failed') {
+      // The channel could not be joined, and the line above says why.
+      statusPill.hidden = true;
+      return;
     }
-    statusPill.textContent = text;
-    statusPill.className = cls;
-    statusPill.hidden = !text;
+    statusPill.textContent = status.text;
+    statusPill.className = status.level;
+    statusPill.hidden = !status.text;
     updateJumpPill(); // the two pills share the bottom centre
-  }
-
-  function onStreamLive(ev) {
-    conn.live = true;
-    if (!overlayMode) systemLine(`${slug} went live${ev.title ? `: ${ev.title}` : ''}`);
-    updateStatus();
-  }
-
-  function onStreamOffline() {
-    conn.live = false;
-    if (!overlayMode) systemLine(`${slug} went offline`);
-    updateStatus();
-  }
-
-  const EVENT_HANDLERS = {
-    stream_live: onStreamLive,
-    stream_offline: onStreamOffline,
-    message_deleted: onMessageDeleted,
-    chat_cleared: onChatCleared,
-    user_banned: onUserBanned,
-    user_unbanned: onUserUnbanned,
-    pin_created: (ev) => showPin(ev),
-    pin_deleted: () => clearPin(),
-    subscription: onSubscription,
-    gifted_subs: onGiftedSubs,
-    kicks: onKicks,
-    reward: onReward,
-    host: onHost,
-  };
-
-  function onEvent(ev) {
-    const handler = ev && EVENT_HANDLERS[ev.type];
-    if (!handler) return;
-    // Deletions and bans look rows up in the DOM, so anything still queued
-    // for this frame has to land first or it would be missed.
-    flushRows();
-    // A deletion above the view must not move what the viewer is reading.
-    keepingView(() => handler(ev));
   }
 
   // ---------------------------------------------------------------------
@@ -2735,26 +2354,6 @@ BetterChatSettings.ready.then(function () {
     code.textContent = `${location.origin}/xqc`;
     row.appendChild(code);
     appendRow(row);
-  }
-
-  // Messages can arrive twice: once from the history backfill and once live
-  // (or again after a reconnect replays nothing, but Kick may re-deliver).
-  const seenIds = new Set();
-  const SEEN_CAP = 5000;
-
-  function notSeenBefore(msg) {
-    if (!msg || !msg.id) return true;
-    if (seenIds.has(msg.id)) return false;
-    seenIds.add(msg.id);
-    if (seenIds.size > SEEN_CAP) {
-      // Drop the oldest half; Set iteration is insertion-ordered.
-      let i = 0;
-      for (const id of seenIds) {
-        seenIds.delete(id);
-        if (++i >= SEEN_CAP / 2) break;
-      }
-    }
-    return true;
   }
 
   // ---------------------------------------------------------------------
@@ -2783,7 +2382,9 @@ BetterChatSettings.ready.then(function () {
   // Overlay mode is the streamer's own OBS source, not a viewer, and a page
   // opened from a file or another static server has no /api/beat to talk to.
   const beatsPossible = /^https?:$/.test(location.protocol) && !overlayMode;
-  let messagesSinceBeat = 0;
+  // The session counts the live messages it has drawn; each beat reports how
+  // many came since the one before.
+  let messagesAtLastBeat = 0;
   let beatTimer = null;
   let beatChannel = null;
   // Resolved once. sessionStorage can be unavailable (an embed in a browser
@@ -2815,15 +2416,16 @@ BetterChatSettings.ready.then(function () {
   // Callers decide whether a beat is allowed; this only sends one. That is
   // what lets opting out send its parting "leave" after the answer changed.
   function sendBeat(channelSlug, event) {
+    const messagesNow = session.liveMessages();
     const body = JSON.stringify({
       tab: tabId(),
       channel: channelSlug,
       event,
-      messages: messagesSinceBeat,
+      messages: messagesNow - messagesAtLastBeat,
       source: embedMode ? 'embed' : 'site',
       build: buildName,
     });
-    messagesSinceBeat = 0;
+    messagesAtLastBeat = messagesNow;
     const url = BEAT_URL;
     if (event === 'leave' && navigator.sendBeacon) {
       navigator.sendBeacon(url, body); // a string body is sent as text/plain
@@ -2880,80 +2482,34 @@ BetterChatSettings.ready.then(function () {
     consentEl.hidden = !(beatsPossible && handshakeSettled && settings.stats === 'ask');
   }
 
-  // Refreshes the pin from Kick's history endpoint (used on connect and
-  // after a reconnect, when a pin may have come or gone unnoticed).
-  async function refreshPinAndHistory(channelId, backfill) {
-    try {
-      const { pinned, messages } = await kick.pinnedAndHistory(channelId);
-      if (backfill) for (const m of messages) if (notSeenBefore(m)) appendMessage(m);
-      if (pinned) showPin(pinned);
-      else clearPin();
-    } catch (_e) {
-      /* history is a nice-to-have; live chat works without it */
-    }
-  }
+  // ---------------------------------------------------------------------
+  // The chat session (core.js): joining the channel, Kick's feed, and every
+  // decision about what is shown. This page hands it the browser's own fetch,
+  // WebSocket and timers, and draws what it sends.
+  // ---------------------------------------------------------------------
 
-  async function watch(channelSlug) {
+  const session = BetterChatCore.createChatSession({
+    slug,
+    settings,
+    overlay: overlayMode,
+    config: CONFIG,
+    host: {
+      fetch: (url, init) => fetch(url, init),
+      WebSocket,
+      setTimeout: (fn, ms) => setTimeout(fn, ms),
+      clearTimeout: (id) => clearTimeout(id),
+      now: () => Date.now(),
+    },
+    onOps: applyOps,
+    onUnknown: (name, data) => {
+      if (query.has('debug')) console.debug('unhandled Kick event', name, data);
+    },
+  });
+
+  function watch(channelSlug) {
     document.title = `${channelSlug} - BetterChat`;
-    if (!overlayMode) systemLine(`joining ${channelSlug}...`);
-    updateStatus();
-
-    let info;
-    try {
-      info = await kick.resolveChannel(channelSlug);
-    } catch (e) {
-      const notFound = e && e.status === 404;
-      systemLine(notFound ? `no such channel: ${channelSlug}` : 'Kick API is unavailable', true);
-      statusPill.hidden = true;
-      return;
-    }
-
-    subscriberBadges = info.subscriber_badges || [];
-    conn.live = info.live;
-    document.title = `${info.slug} - BetterChat`;
-
-    // Recent messages + current pin, so the page isn't empty on open.
-    await refreshPinAndHistory(info.channel_id, true);
-
-    const relay = new BetterChatKick.PusherRelay({
-      appKey: CONFIG.pusherAppKey,
-      cluster: CONFIG.pusherCluster,
-      chatroomId: info.chatroom_id,
-      channelId: info.channel_id,
-      onMessage: (msg) => {
-        if (notSeenBefore(msg)) {
-          messagesSinceBeat++;
-          appendMessage(msg);
-        }
-      },
-      onEvent,
-      onSocket: (open) => {
-        const was = conn.browser;
-        conn.browser = open;
-        if (!open && was && !overlayMode) systemLine('lost connection to Kick, reconnecting...', true);
-        updateStatus();
-      },
-      onSubscribed: (ok) => {
-        conn.relay = ok;
-        if (ok) {
-          const rejoin = conn.joinedOnce;
-          conn.joinedOnce = true;
-          if (!overlayMode) {
-            systemLine(rejoin ? `reconnected to ${info.slug}'s chat` : `connected to ${info.slug}'s chat`);
-            if (!rejoin && info.live === false) systemLine(`${info.slug} is not live right now - you'll still see chat`);
-          }
-          // After a drop, a pin may have changed while we weren't listening.
-          if (rejoin) refreshPinAndHistory(info.channel_id, false);
-          else startBeats(info.slug);
-        }
-        updateStatus();
-      },
-      onUnknown: (name, data) => {
-        if (query.has('debug')) console.debug('unhandled Kick event', name, data);
-      },
-    });
-    relay.connect();
-    window.addEventListener('beforeunload', () => relay.close());
+    session.start();
+    window.addEventListener('beforeunload', () => session.stop());
   }
 
   // Service worker: caches the shell and scripts so the page still loads

@@ -21,13 +21,20 @@ browser requests and its Pusher feed accepts any origin, so the relay had
 nothing left to do; the frontend is the same, and what the relay did now
 lives in `site/kick.js`.
 
+The chat itself - everything decided about a message before it is drawn -
+lives in `site/core.js`, which has no page around it at all. The web page draws
+what it says, and so does the Viewmux desktop app, which runs the same file in
+an embedded JavaScript engine (see "How it works").
+
 ## Layout
 
 ```
-site/          the chat page: index.html, app.js, settings.js, defaults.json, kick.js,
-               config.js, sw.js, privacy.html
+site/          the chat page: index.html, app.js, core.js, settings.js, defaults.json,
+               kick.js, config.js, sw.js, privacy.html
+docs/          core-protocol.md: what core.js sends, for anything that draws it
 betterchat/    the server: main.py (routes), stats.py (heartbeats -> stats), admin.html
-tests/         pytest (server) + node --test (kick.js, settings.js)
+tests/         pytest (server) + node --test (kick.js, settings.js, and core.js against
+               the golden fixtures in tests/fixtures/)
 config/        Kamal's deploy config (production and dev destinations)
 .kamal/        deploy-kit: the vendored kit, its settings and hook shims
 deploy/        the host's Caddy site blocks, the server's env file template
@@ -149,11 +156,26 @@ per-channel table. HTTP Basic Auth; a 404 until credentials are set.
 ```
  Kick REST API  <-- fetch --  browser  -- WebSocket -->  Kick's Pusher
  (channel, pin,              (kick.js +                 (chatrooms.<id>.v2,
-  history, user)              app.js)                    channel.<id>)
+  history, user)              core.js +                  channel.<id>)
+                              app.js)
                                  |
               GET /<channel>     |     POST /api/beat  (only if opted in)
                                  v
                         betterchat server (uv)  -->  GET /admin
+```
+
+Inside the page the work is split in two. `core.js` is the chat: given Kick's
+traffic it decides what is shown, and says so as plain JSON operations (append
+this row, update that one, remove, pin, status). `app.js` draws those
+operations and owns everything that is only the page's business: the DOM,
+scrolling, the settings panel, the overlay's fade, consent and heartbeats, and
+the KickPlus extension's moderation and replies.
+
+```
+ Kick  -->  kick.js  -->  core.js  -- ops (JSON) -->  app.js     (DOM, the web page)
+                            ^                    \-->  Viewmux   (Flutter, via QuickJS)
+                            |
+            host: fetch, WebSocket, timers, clock
 ```
 
 - `site/kick.js` - the former backend, in the browser:
@@ -164,21 +186,49 @@ per-channel table. HTTP Basic Auth; a 404 until credentials are set.
     ping/pong keepalive from Kick's `activity_timeout` and reconnect with
     exponential backoff.
   - `normalizeMessage` / `normalizeEvent`: Kick's raw payloads into the
-    shapes `app.js` renders. `normalizeMessage` keeps `sender_id` because a
+    shapes `core.js` works on. `normalizeMessage` keeps `sender_id` because a
     reply has to name the parent's sender to Kick, and this is the only place
     it comes past.
-- `site/settings.js` - the settings model, and the only part of the frontend
-  with no DOM in it: which settings exist, what each may hold (`sanitize`),
-  and how they survive a round trip through the URL. Split out so it can be
-  tested on its own, and loaded the same way as `kick.js`.
+
+  Both classes take their `fetch`, `WebSocket`, timers and clock as options
+  and fall back to the browser's own only when given none, which is what lets
+  them run where there is no browser.
+- `site/core.js` - the chat, with nothing to draw it on. One
+  `createChatSession` per channel: it joins, backfills history and the pin,
+  listens to the feed, and decides everything about what is shown - duplicate
+  messages dropped, a repeated message counted onto the copy already there
+  (`×3`), emote spam collapsed, badges resolved into the viewer's order with
+  hidden kinds marked, `@mentions` verified one lookup at a time, deletions and
+  bans applied per the deleted-messages setting, which events become cards,
+  when the pin expires, the connection status, and how much history is kept
+  (twice as much while the viewer has scrolled up). What comes out is a stream
+  of plain JSON operations; user cards and a user's messages this session are
+  asked for by method.
+
+  It uses no browser API at all - no DOM, no storage, no `Intl`, not even
+  `fetch`, `WebSocket` or `setTimeout`: the host hands those over. That is so
+  the Viewmux desktop app can run the very same file in an embedded QuickJS and
+  draw the chat natively, without a web view. `docs/core-protocol.md` is the
+  contract both hosts are written against, versioned as
+  `CORE_PROTOCOL_VERSION`; the golden fixtures in `tests/fixtures/` hold it to
+  it, and a test runs the three scripts in a bare context with no browser and
+  no `Intl` to keep it that way.
+- `site/settings.js` - the settings model: which settings exist, what each may
+  hold (`sanitize`), and how they survive a round trip through the URL. No
+  DOM, so it can be tested on its own, loaded the same way as `kick.js`, and
+  used by the desktop app too (which hands it `defaults.json` itself, having no
+  `fetch` to load it with).
 - `site/defaults.json` - the starting value of every setting. **Change
   defaults here**, not in code. It is checked against `settings.js` when the
   page loads: a missing setting, a misspelt name, a number out of range or an
   unknown option stops the page with a message naming the setting, and
   `npm test` catches the same mistakes before a push. The one thing it cannot
   set is the viewer-count answer: every viewer is asked first.
-- `site/app.js` - rendering, filters, user cards, moderation and overlay mode:
-  everything that touches the DOM. `site/config.js` - Kick's public Pusher app
+- `site/app.js` - the web page's renderer: it draws the operations `core.js`
+  sends, and owns everything that is only the page's - scrolling and the jump
+  pill, the settings panel, user card and reply tooltip layout, overlay fades,
+  the consent banner and heartbeats, and the bridge to the KickPlus extension
+  for moderating and replying. `site/config.js` - Kick's public Pusher app
   key and cluster (the same values kick.com ships to every browser).
 - `betterchat/main.py` - serves `site/` (every unknown path is the chat
   page, real files as-is), takes heartbeats, serves the board, and answers
@@ -249,8 +299,18 @@ Tests:
 
 ```bash
 uv run pytest        # server: heartbeats, auth, site serving, persistence
-npm test             # kick.js normalizers / API client / relay framing, and settings.js (Node)
+npm test             # kick.js normalizers / API client / relay framing, settings.js, and
+                     # core.js against the golden fixtures (Node)
+npm run check        # syntax-checks every script under site/
 ```
+
+The core's tests replay Kick traffic - REST answers in `tests/fixtures/kick/`,
+Pusher frames in `tests/fixtures/frames/` exactly as Pusher sends them - through
+the scenarios in `tests/fixtures/scenarios/`, and compare everything the core
+emits with the `.expected.json` beside each. Those files are the protocol the
+desktop app is built against, so a change to one is a change to what it
+receives: after a deliberate change, `UPDATE_FIXTURES=1 npm test` rewrites them,
+and the diff is worth reading before it is committed.
 
 | Variable | Purpose |
 | --- | --- |

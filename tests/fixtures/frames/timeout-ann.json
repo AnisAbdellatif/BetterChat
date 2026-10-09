@@ -1,0 +1,1 @@
+{"event":"App\\Events\\UserBannedEvent","data":"{\"id\":\"a1fa57d1-4cf5-484e-8948-c0f8fc49f27e\",\"user\":{\"id\":1001,\"username\":\"Ann\",\"slug\":\"ann\"},\"banned_by\":{\"id\":0,\"username\":\"moderator\",\"slug\":\"moderator\"},\"permanent\":false,\"duration\":60,\"expires_at\":\"2026-09-08T19:00:00+00:00\"}","channel":"chatrooms.668.v2"}

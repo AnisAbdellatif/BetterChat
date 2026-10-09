@@ -26,7 +26,7 @@ const CACHE = `betterchat-${BUILD}`;
 // reads its channel from location.pathname, so one copy under a fixed key
 // answers a navigation to any channel.
 const SHELL = '/';
-const ASSETS = [SHELL, '/app.js', '/settings.js', '/defaults.json', '/kick.js', '/config.js', '/favicon.ico'];
+const ASSETS = [SHELL, '/app.js', '/settings.js', '/defaults.json', '/kick.js', '/core.js', '/config.js', '/favicon.ico'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

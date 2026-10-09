@@ -1,0 +1,43 @@
+{
+  "id": 668,
+  "user_id": 676,
+  "slug": "xqc",
+  "is_banned": false,
+  "playback_url": null,
+  "vod_enabled": true,
+  "subscription_enabled": true,
+  "followers_count": 1000000,
+  "subscriber_badges": [
+    {
+      "id": 11,
+      "channel_id": 668,
+      "months": 6,
+      "badge_image": {
+        "srcset": "",
+        "src": "https://files.kick.com/channel_subscriber_badges/11/original"
+      }
+    },
+    {
+      "id": 10,
+      "channel_id": 668,
+      "months": 1,
+      "badge_image": {
+        "srcset": "",
+        "src": "https://files.kick.com/channel_subscriber_badges/10/original"
+      }
+    }
+  ],
+  "livestream": null,
+  "chatroom": {
+    "id": 668,
+    "chatable_type": "App\\Models\\Channel",
+    "channel_id": 668,
+    "chat_mode": "public",
+    "slow_mode": false
+  },
+  "user": {
+    "id": 676,
+    "username": "xQc",
+    "bio": "streamer"
+  }
+}

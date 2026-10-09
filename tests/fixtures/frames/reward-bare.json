@@ -1,0 +1,1 @@
+{"event":"App\\Events\\RewardRedeemedEvent","data":"{\"reward\":{\"title\":\"Hydrate!\"},\"user\":{\"username\":\"thirsty\"}}","channel":"chatroom_668"}

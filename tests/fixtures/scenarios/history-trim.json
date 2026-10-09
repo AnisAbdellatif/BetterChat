@@ -1,0 +1,44 @@
+{
+  "description": "history is trimmed to the history size; held by the viewer it keeps twice that until let go",
+  "settings": {
+    "historyLimit": 10
+  },
+  "rest": {
+    "/channels/668/messages": "kick/history-15.json"
+  },
+  "logJoin": true,
+  "steps": [
+    {
+      "join": true
+    },
+    {
+      "call": "setHeld",
+      "args": [
+        true
+      ]
+    },
+    {
+      "frame": "message-mod-1"
+    },
+    {
+      "frame": "message-mod-2"
+    },
+    {
+      "frame": "message-mod-3"
+    },
+    {
+      "call": "setHeld",
+      "args": [
+        false
+      ]
+    },
+    {
+      "call": "trim"
+    },
+    {
+      "settings": {
+        "scrollback": false
+      }
+    }
+  ]
+}

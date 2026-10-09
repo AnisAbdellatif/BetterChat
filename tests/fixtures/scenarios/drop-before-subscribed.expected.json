@@ -1,0 +1,194 @@
+[
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "line",
+          "id": "r1",
+          "style": "system",
+          "error": false,
+          "icon": null,
+          "segs": [
+            {
+              "t": "text",
+              "text": "joining xqc..."
+            }
+          ]
+        }
+      },
+      {
+        "op": "status",
+        "status": {
+          "state": "connecting",
+          "text": "Connecting to Kick...",
+          "level": "warn",
+          "socket": false,
+          "subscribed": false,
+          "live": null,
+          "joined": false
+        }
+      }
+    ]
+  },
+  {
+    "fetch": "/channels/xqc"
+  },
+  {
+    "ops": [
+      {
+        "op": "channel",
+        "channel": {
+          "slug": "xqc",
+          "channelId": 668,
+          "chatroomId": 668,
+          "live": false
+        }
+      }
+    ]
+  },
+  {
+    "fetch": "/channels/668/messages"
+  },
+  {
+    "ops": [
+      {
+        "op": "pin",
+        "pin": null
+      }
+    ]
+  },
+  {
+    "open": true
+  },
+  {
+    "ops": [
+      {
+        "op": "status",
+        "status": {
+          "state": "subscribing",
+          "text": "Waiting for Kick to confirm the chat subscription...",
+          "level": "warn",
+          "socket": true,
+          "subscribed": false,
+          "live": false,
+          "joined": false
+        }
+      }
+    ]
+  },
+  {
+    "frame": "connection-established"
+  },
+  {
+    "drop": true
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "line",
+          "id": "r2",
+          "style": "system",
+          "error": true,
+          "icon": null,
+          "segs": [
+            {
+              "t": "text",
+              "text": "lost connection to Kick, reconnecting..."
+            }
+          ]
+        }
+      },
+      {
+        "op": "status",
+        "status": {
+          "state": "connecting",
+          "text": "Connecting to Kick...",
+          "level": "warn",
+          "socket": false,
+          "subscribed": false,
+          "live": false,
+          "joined": false
+        }
+      }
+    ]
+  },
+  {
+    "advance": 1000
+  },
+  {
+    "open": true
+  },
+  {
+    "ops": [
+      {
+        "op": "status",
+        "status": {
+          "state": "subscribing",
+          "text": "Waiting for Kick to confirm the chat subscription...",
+          "level": "warn",
+          "socket": true,
+          "subscribed": false,
+          "live": false,
+          "joined": false
+        }
+      }
+    ]
+  },
+  {
+    "frame": "connection-established"
+  },
+  {
+    "frame": "subscribed-chat"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "line",
+          "id": "r3",
+          "style": "system",
+          "error": false,
+          "icon": null,
+          "segs": [
+            {
+              "t": "text",
+              "text": "connected to xqc's chat"
+            }
+          ]
+        }
+      },
+      {
+        "op": "append",
+        "row": {
+          "kind": "line",
+          "id": "r4",
+          "style": "system",
+          "error": false,
+          "icon": null,
+          "segs": [
+            {
+              "t": "text",
+              "text": "xqc is not live right now - you'll still see chat"
+            }
+          ]
+        }
+      },
+      {
+        "op": "status",
+        "status": {
+          "state": "offline",
+          "text": "xqc is offline - chat still works",
+          "level": "offline",
+          "socket": true,
+          "subscribed": true,
+          "live": false,
+          "joined": true
+        }
+      }
+    ]
+  }
+]

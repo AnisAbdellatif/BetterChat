@@ -1,0 +1,36 @@
+{
+  "description": "Kick's whole message rides along only when asked for; host notes are lines like any other",
+  "steps": [
+    {
+      "join": true
+    },
+    {
+      "call": "setIncludeRaw",
+      "args": [
+        true
+      ]
+    },
+    {
+      "frame": "message-bob"
+    },
+    {
+      "call": "setIncludeRaw",
+      "args": [
+        false
+      ]
+    },
+    {
+      "frame": "message-bob-2"
+    },
+    {
+      "call": "note",
+      "args": [
+        "could not delete that message: Forbidden",
+        true
+      ]
+    },
+    {
+      "call": "liveMessages"
+    }
+  ]
+}

@@ -1,0 +1,130 @@
+[
+  {
+    "call": "setIncludeRaw",
+    "args": [
+      true
+    ]
+  },
+  {
+    "frame": "message-bob"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r4",
+          "msgId": "m-bob",
+          "type": "message",
+          "username": "bob_42",
+          "user": "bob_42",
+          "senderId": 1002,
+          "text": "hi all",
+          "createdAt": "2026-09-08T18:00:06+00:00",
+          "color": "#93EBFF",
+          "kickColor": "#93EBFF",
+          "badges": [],
+          "parts": [
+            {
+              "t": "text",
+              "text": "hi all"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null,
+          "raw": {
+            "id": "m-bob",
+            "chatroom_id": 668,
+            "content": "hi all",
+            "type": "message",
+            "created_at": "2026-09-08T18:00:06+00:00",
+            "sender": {
+              "id": 1002,
+              "username": "bob_42",
+              "slug": "bob-42",
+              "identity": {
+                "color": "#93EBFF",
+                "badges": []
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "call": "setIncludeRaw",
+    "args": [
+      false
+    ]
+  },
+  {
+    "frame": "message-bob-2"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r5",
+          "msgId": "m-bob-2",
+          "type": "message",
+          "username": "bob_42",
+          "user": "bob_42",
+          "senderId": 1002,
+          "text": "still here",
+          "createdAt": "2026-09-08T18:00:07+00:00",
+          "color": "#93EBFF",
+          "kickColor": "#93EBFF",
+          "badges": [],
+          "parts": [
+            {
+              "t": "text",
+              "text": "still here"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      }
+    ]
+  },
+  {
+    "call": "note",
+    "args": [
+      "could not delete that message: Forbidden",
+      true
+    ]
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "line",
+          "id": "r6",
+          "style": "system",
+          "error": true,
+          "icon": null,
+          "segs": [
+            {
+              "t": "text",
+              "text": "could not delete that message: Forbidden"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "call": "liveMessages",
+    "args": [],
+    "result": 2
+  }
+]

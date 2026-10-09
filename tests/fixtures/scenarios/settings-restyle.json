@@ -1,0 +1,54 @@
+{
+  "description": "changing name colours, badge order and hidden kinds, and the mention name updates only the rows that change; the history size applies at once",
+  "settings": {
+    "historyLimit": 10
+  },
+  "steps": [
+    {
+      "join": true
+    },
+    {
+      "frame": "message-rich"
+    },
+    {
+      "frame": "message-bob"
+    },
+    {
+      "frame": "message-mentions-me"
+    },
+    {
+      "settings": {
+        "monocolor": true,
+        "monocolorValue": "#abcdef"
+      }
+    },
+    {
+      "settings": {
+        "monocolor": false
+      }
+    },
+    {
+      "settings": {
+        "hiddenBadges": [
+          "moderator"
+        ],
+        "badgeOrder": [
+          "event",
+          "sub_gifter",
+          "subscriber",
+          "moderator"
+        ]
+      }
+    },
+    {
+      "settings": {
+        "mentionMe": "Bob_42"
+      }
+    },
+    {
+      "settings": {
+        "fontSize": 20
+      }
+    }
+  ]
+}

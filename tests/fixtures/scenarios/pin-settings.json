@@ -1,0 +1,19 @@
+{
+  "description": "the pin is sent whatever showPinned says, in the colour the settings give its author",
+  "settings": {
+    "showPinned": false,
+    "monocolor": true,
+    "monocolorValue": "#123456"
+  },
+  "steps": [
+    {
+      "join": true
+    },
+    {
+      "frame": "pin-created"
+    },
+    {
+      "frame": "pin-deleted"
+    }
+  ]
+}

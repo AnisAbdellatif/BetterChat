@@ -1,0 +1,48 @@
+[
+  {
+    "frame": "pin-created"
+  },
+  {
+    "ops": [
+      {
+        "op": "pin",
+        "pin": {
+          "msgId": "m-pinned",
+          "username": "ModMike",
+          "color": "#123456",
+          "text": "pinned by @ModMike: drink water",
+          "parts": [
+            {
+              "t": "text",
+              "text": "pinned by "
+            },
+            {
+              "t": "mention",
+              "name": "ModMike",
+              "key": "modmike",
+              "verified": true
+            },
+            {
+              "t": "text",
+              "text": ": drink water"
+            }
+          ],
+          "by": "ModMike",
+          "expiresAt": "2026-09-08T18:20:00.000Z",
+          "durationMin": 20
+        }
+      }
+    ]
+  },
+  {
+    "frame": "pin-deleted"
+  },
+  {
+    "ops": [
+      {
+        "op": "pin",
+        "pin": null
+      }
+    ]
+  }
+]

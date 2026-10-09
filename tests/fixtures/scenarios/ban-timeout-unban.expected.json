@@ -1,0 +1,325 @@
+[
+  {
+    "frame": "message-mod-1"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r4",
+          "msgId": "m-mod-1",
+          "type": "message",
+          "username": "Ann",
+          "user": "ann",
+          "senderId": 1001,
+          "text": "message 1",
+          "createdAt": "2026-09-08T18:00:31+00:00",
+          "color": "#FF9D00",
+          "kickColor": "#FF9D00",
+          "badges": [
+            {
+              "key": 0,
+              "kind": "subscriber",
+              "title": "Subscriber (8 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "message 1"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      }
+    ]
+  },
+  {
+    "frame": "message-mod-2"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r5",
+          "msgId": "m-mod-2",
+          "type": "message",
+          "username": "bob_42",
+          "user": "bob_42",
+          "senderId": 1002,
+          "text": "message 2",
+          "createdAt": "2026-09-08T18:00:32+00:00",
+          "color": "#93EBFF",
+          "kickColor": "#93EBFF",
+          "badges": [],
+          "parts": [
+            {
+              "t": "text",
+              "text": "message 2"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      }
+    ]
+  },
+  {
+    "frame": "message-mod-3"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r6",
+          "msgId": "m-mod-3",
+          "type": "message",
+          "username": "Ann",
+          "user": "ann",
+          "senderId": 1001,
+          "text": "message 3",
+          "createdAt": "2026-09-08T18:00:33+00:00",
+          "color": "#FF9D00",
+          "kickColor": "#FF9D00",
+          "badges": [
+            {
+              "key": 0,
+              "kind": "subscriber",
+              "title": "Subscriber (8 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "message 3"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      }
+    ]
+  },
+  {
+    "frame": "timeout-ann"
+  },
+  {
+    "ops": [
+      {
+        "op": "update",
+        "id": "r4",
+        "patch": {
+          "deleted": "timed out"
+        }
+      },
+      {
+        "op": "update",
+        "id": "r6",
+        "patch": {
+          "deleted": "timed out"
+        }
+      },
+      {
+        "op": "append",
+        "row": {
+          "kind": "line",
+          "id": "r7",
+          "style": "mod",
+          "error": false,
+          "icon": "⏳",
+          "segs": [
+            {
+              "t": "user",
+              "name": "Ann"
+            },
+            {
+              "t": "text",
+              "text": " was timed out for 1 hour"
+            },
+            {
+              "t": "text",
+              "text": " by "
+            },
+            {
+              "t": "user",
+              "name": "moderator"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "call": "isBanned",
+    "args": [
+      "ANN"
+    ],
+    "result": true
+  },
+  {
+    "frame": "ban-bob"
+  },
+  {
+    "ops": [
+      {
+        "op": "update",
+        "id": "r5",
+        "patch": {
+          "deleted": "banned"
+        }
+      },
+      {
+        "op": "append",
+        "row": {
+          "kind": "line",
+          "id": "r8",
+          "style": "mod",
+          "error": false,
+          "icon": "🔨",
+          "segs": [
+            {
+              "t": "user",
+              "name": "bob_42"
+            },
+            {
+              "t": "text",
+              "text": " was banned"
+            },
+            {
+              "t": "text",
+              "text": " by "
+            },
+            {
+              "t": "user",
+              "name": "ModMike"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "frame": "untimeout-ann"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "line",
+          "id": "r9",
+          "style": "mod",
+          "error": false,
+          "icon": "🔓",
+          "segs": [
+            {
+              "t": "user",
+              "name": "Ann"
+            },
+            {
+              "t": "text",
+              "text": "'s timeout was lifted"
+            },
+            {
+              "t": "text",
+              "text": " by "
+            },
+            {
+              "t": "user",
+              "name": "ModMike"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "frame": "unban-bob"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "line",
+          "id": "r10",
+          "style": "mod",
+          "error": false,
+          "icon": "🔓",
+          "segs": [
+            {
+              "t": "user",
+              "name": "bob_42"
+            },
+            {
+              "t": "text",
+              "text": " was unbanned"
+            },
+            {
+              "t": "text",
+              "text": " by "
+            },
+            {
+              "t": "user",
+              "name": "ModMike"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "call": "isBanned",
+    "args": [
+      "ann"
+    ],
+    "result": false
+  },
+  {
+    "settings": {
+      "showModeration": false,
+      "deletedMessages": "remove"
+    }
+  },
+  {
+    "frame": "timeout-ann"
+  },
+  {
+    "ops": [
+      {
+        "op": "remove",
+        "id": "r4"
+      },
+      {
+        "op": "remove",
+        "id": "r6"
+      }
+    ]
+  },
+  {
+    "call": "isBanned",
+    "args": [
+      "ann"
+    ],
+    "result": true
+  }
+]

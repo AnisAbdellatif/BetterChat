@@ -1,0 +1,309 @@
+{
+  "status": {
+    "error": false,
+    "code": 200,
+    "message": "SUCCESS"
+  },
+  "data": {
+    "messages": [
+      {
+        "id": "b-15",
+        "chatroom_id": 668,
+        "content": "backfill 15",
+        "type": "message",
+        "created_at": "2026-09-08T17:51:15+00:00",
+        "sender": {
+          "id": 1001,
+          "username": "Ann",
+          "slug": "ann",
+          "identity": {
+            "color": "#FF9D00",
+            "badges": [
+              {
+                "type": "subscriber",
+                "text": "Subscriber",
+                "count": 8,
+                "sort_order": 9
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "b-14",
+        "chatroom_id": 668,
+        "content": "backfill 14",
+        "type": "message",
+        "created_at": "2026-09-08T17:51:14+00:00",
+        "sender": {
+          "id": 1002,
+          "username": "bob_42",
+          "slug": "bob-42",
+          "identity": {
+            "color": "#93EBFF",
+            "badges": []
+          }
+        }
+      },
+      {
+        "id": "b-13",
+        "chatroom_id": 668,
+        "content": "backfill 13",
+        "type": "message",
+        "created_at": "2026-09-08T17:51:13+00:00",
+        "sender": {
+          "id": 1001,
+          "username": "Ann",
+          "slug": "ann",
+          "identity": {
+            "color": "#FF9D00",
+            "badges": [
+              {
+                "type": "subscriber",
+                "text": "Subscriber",
+                "count": 8,
+                "sort_order": 9
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "b-12",
+        "chatroom_id": 668,
+        "content": "backfill 12",
+        "type": "message",
+        "created_at": "2026-09-08T17:51:12+00:00",
+        "sender": {
+          "id": 1002,
+          "username": "bob_42",
+          "slug": "bob-42",
+          "identity": {
+            "color": "#93EBFF",
+            "badges": []
+          }
+        }
+      },
+      {
+        "id": "b-11",
+        "chatroom_id": 668,
+        "content": "backfill 11",
+        "type": "message",
+        "created_at": "2026-09-08T17:51:11+00:00",
+        "sender": {
+          "id": 1001,
+          "username": "Ann",
+          "slug": "ann",
+          "identity": {
+            "color": "#FF9D00",
+            "badges": [
+              {
+                "type": "subscriber",
+                "text": "Subscriber",
+                "count": 8,
+                "sort_order": 9
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "b-10",
+        "chatroom_id": 668,
+        "content": "backfill 10",
+        "type": "message",
+        "created_at": "2026-09-08T17:51:10+00:00",
+        "sender": {
+          "id": 1002,
+          "username": "bob_42",
+          "slug": "bob-42",
+          "identity": {
+            "color": "#93EBFF",
+            "badges": []
+          }
+        }
+      },
+      {
+        "id": "b-9",
+        "chatroom_id": 668,
+        "content": "backfill 9",
+        "type": "message",
+        "created_at": "2026-09-08T17:50:19+00:00",
+        "sender": {
+          "id": 1001,
+          "username": "Ann",
+          "slug": "ann",
+          "identity": {
+            "color": "#FF9D00",
+            "badges": [
+              {
+                "type": "subscriber",
+                "text": "Subscriber",
+                "count": 8,
+                "sort_order": 9
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "b-8",
+        "chatroom_id": 668,
+        "content": "backfill 8",
+        "type": "message",
+        "created_at": "2026-09-08T17:50:18+00:00",
+        "sender": {
+          "id": 1002,
+          "username": "bob_42",
+          "slug": "bob-42",
+          "identity": {
+            "color": "#93EBFF",
+            "badges": []
+          }
+        }
+      },
+      {
+        "id": "b-7",
+        "chatroom_id": 668,
+        "content": "backfill 7",
+        "type": "message",
+        "created_at": "2026-09-08T17:50:17+00:00",
+        "sender": {
+          "id": 1001,
+          "username": "Ann",
+          "slug": "ann",
+          "identity": {
+            "color": "#FF9D00",
+            "badges": [
+              {
+                "type": "subscriber",
+                "text": "Subscriber",
+                "count": 8,
+                "sort_order": 9
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "b-6",
+        "chatroom_id": 668,
+        "content": "backfill 6",
+        "type": "message",
+        "created_at": "2026-09-08T17:50:16+00:00",
+        "sender": {
+          "id": 1002,
+          "username": "bob_42",
+          "slug": "bob-42",
+          "identity": {
+            "color": "#93EBFF",
+            "badges": []
+          }
+        }
+      },
+      {
+        "id": "b-5",
+        "chatroom_id": 668,
+        "content": "backfill 5",
+        "type": "message",
+        "created_at": "2026-09-08T17:50:15+00:00",
+        "sender": {
+          "id": 1001,
+          "username": "Ann",
+          "slug": "ann",
+          "identity": {
+            "color": "#FF9D00",
+            "badges": [
+              {
+                "type": "subscriber",
+                "text": "Subscriber",
+                "count": 8,
+                "sort_order": 9
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "b-4",
+        "chatroom_id": 668,
+        "content": "backfill 4",
+        "type": "message",
+        "created_at": "2026-09-08T17:50:14+00:00",
+        "sender": {
+          "id": 1002,
+          "username": "bob_42",
+          "slug": "bob-42",
+          "identity": {
+            "color": "#93EBFF",
+            "badges": []
+          }
+        }
+      },
+      {
+        "id": "b-3",
+        "chatroom_id": 668,
+        "content": "backfill 3",
+        "type": "message",
+        "created_at": "2026-09-08T17:50:13+00:00",
+        "sender": {
+          "id": 1001,
+          "username": "Ann",
+          "slug": "ann",
+          "identity": {
+            "color": "#FF9D00",
+            "badges": [
+              {
+                "type": "subscriber",
+                "text": "Subscriber",
+                "count": 8,
+                "sort_order": 9
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "b-2",
+        "chatroom_id": 668,
+        "content": "backfill 2",
+        "type": "message",
+        "created_at": "2026-09-08T17:50:12+00:00",
+        "sender": {
+          "id": 1002,
+          "username": "bob_42",
+          "slug": "bob-42",
+          "identity": {
+            "color": "#93EBFF",
+            "badges": []
+          }
+        }
+      },
+      {
+        "id": "b-1",
+        "chatroom_id": 668,
+        "content": "backfill 1",
+        "type": "message",
+        "created_at": "2026-09-08T17:50:11+00:00",
+        "sender": {
+          "id": 1001,
+          "username": "Ann",
+          "slug": "ann",
+          "identity": {
+            "color": "#FF9D00",
+            "badges": [
+              {
+                "type": "subscriber",
+                "text": "Subscriber",
+                "count": 8,
+                "sort_order": 9
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "cursor": "1757354400000",
+    "pinned_message": null
+  }
+}

@@ -1,0 +1,1 @@
+{"event":"App\\Events\\StreamHostEvent","data":"{\"chatroom_id\":668,\"optional_message\":\"have fun\",\"number_viewers\":1204,\"host_username\":\"hoster\"}","channel":"chatrooms.668.v2"}

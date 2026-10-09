@@ -1,0 +1,56 @@
+{
+  "description": "a timeout and a ban mark the user's rows and draw lines; unbans draw lines; isBanned follows; with moderation lines off only the rows change",
+  "steps": [
+    {
+      "join": true
+    },
+    {
+      "frame": "message-mod-1"
+    },
+    {
+      "frame": "message-mod-2"
+    },
+    {
+      "frame": "message-mod-3"
+    },
+    {
+      "frame": "timeout-ann"
+    },
+    {
+      "call": "isBanned",
+      "args": [
+        "ANN"
+      ]
+    },
+    {
+      "frame": "ban-bob"
+    },
+    {
+      "frame": "untimeout-ann"
+    },
+    {
+      "frame": "unban-bob"
+    },
+    {
+      "call": "isBanned",
+      "args": [
+        "ann"
+      ]
+    },
+    {
+      "settings": {
+        "showModeration": false,
+        "deletedMessages": "remove"
+      }
+    },
+    {
+      "frame": "timeout-ann"
+    },
+    {
+      "call": "isBanned",
+      "args": [
+        "ann"
+      ]
+    }
+  ]
+}

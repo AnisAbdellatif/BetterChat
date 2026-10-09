@@ -1,0 +1,264 @@
+[
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "line",
+          "id": "r1",
+          "style": "system",
+          "error": false,
+          "icon": null,
+          "segs": [
+            {
+              "t": "text",
+              "text": "joining xqc..."
+            }
+          ]
+        }
+      },
+      {
+        "op": "status",
+        "status": {
+          "state": "connecting",
+          "text": "Connecting to Kick...",
+          "level": "warn",
+          "socket": false,
+          "subscribed": false,
+          "live": null,
+          "joined": false
+        }
+      }
+    ]
+  },
+  {
+    "fetch": "/channels/xqc"
+  },
+  {
+    "ops": [
+      {
+        "op": "channel",
+        "channel": {
+          "slug": "xqc",
+          "channelId": 668,
+          "chatroomId": 668,
+          "live": false
+        }
+      }
+    ]
+  },
+  {
+    "fetch": "/channels/668/messages"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r2",
+          "msgId": "h-1",
+          "type": "message",
+          "username": "Ann",
+          "user": "ann",
+          "senderId": 1001,
+          "text": "first",
+          "createdAt": "2026-09-08T17:59:10+00:00",
+          "color": "#FF9D00",
+          "kickColor": "#FF9D00",
+          "badges": [
+            {
+              "key": 0,
+              "kind": "subscriber",
+              "title": "Subscriber (8 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "first"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      },
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r3",
+          "msgId": "h-2",
+          "type": "message",
+          "username": "Ann",
+          "user": "ann",
+          "senderId": 1001,
+          "text": "second @bob_42",
+          "createdAt": "2026-09-08T17:59:20+00:00",
+          "color": "#FF9D00",
+          "kickColor": "#FF9D00",
+          "badges": [
+            {
+              "key": 0,
+              "kind": "subscriber",
+              "title": "Subscriber (8 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "second "
+            },
+            {
+              "t": "mention",
+              "name": "bob_42",
+              "key": "bob_42",
+              "verified": false
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      },
+      {
+        "op": "verify",
+        "key": "bob_42"
+      },
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r4",
+          "msgId": "h-3",
+          "type": "message",
+          "username": "bob_42",
+          "user": "bob_42",
+          "senderId": 1002,
+          "text": "third",
+          "createdAt": "2026-09-08T17:59:30+00:00",
+          "color": "#93EBFF",
+          "kickColor": "#93EBFF",
+          "badges": [],
+          "parts": [
+            {
+              "t": "text",
+              "text": "third"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      },
+      {
+        "op": "pin",
+        "pin": {
+          "msgId": "p-1",
+          "username": "ModMike",
+          "color": "#E9113C",
+          "text": "rules: be nice [emote:37226:KEKW]",
+          "parts": [
+            {
+              "t": "text",
+              "text": "rules: be nice "
+            },
+            {
+              "t": "emote",
+              "id": "37226",
+              "name": "KEKW",
+              "url": "https://files.kick.com/emotes/37226/fullsize",
+              "count": 1
+            }
+          ],
+          "by": "ModMike",
+          "expiresAt": "2026-09-09T14:32:47.597067Z",
+          "durationMin": 1155
+        }
+      }
+    ]
+  },
+  {
+    "ops": [
+      {
+        "op": "status",
+        "status": {
+          "state": "subscribing",
+          "text": "Waiting for Kick to confirm the chat subscription...",
+          "level": "warn",
+          "socket": true,
+          "subscribed": false,
+          "live": false,
+          "joined": false
+        }
+      }
+    ]
+  },
+  {
+    "frame": "connection-established"
+  },
+  {
+    "frame": "subscribed-chat"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "line",
+          "id": "r5",
+          "style": "system",
+          "error": false,
+          "icon": null,
+          "segs": [
+            {
+              "t": "text",
+              "text": "connected to xqc's chat"
+            }
+          ]
+        }
+      },
+      {
+        "op": "append",
+        "row": {
+          "kind": "line",
+          "id": "r6",
+          "style": "system",
+          "error": false,
+          "icon": null,
+          "segs": [
+            {
+              "t": "text",
+              "text": "xqc is not live right now - you'll still see chat"
+            }
+          ]
+        }
+      },
+      {
+        "op": "status",
+        "status": {
+          "state": "offline",
+          "text": "xqc is offline - chat still works",
+          "level": "offline",
+          "socket": true,
+          "subscribed": true,
+          "live": false,
+          "joined": true
+        }
+      }
+    ]
+  },
+  {
+    "frame": "history-duplicate"
+  }
+]
