@@ -5,7 +5,8 @@ example `/xqc`) and the page talks to Kick's REST API directly from the
 browser to resolve the channel and load its history. The live feed comes
 through this server: Kick's realtime server (Centrifugo) only takes
 connections from kick.com, so a small relay holds them and passes the frames
-on (`betterchat/relay.py`). Inside the KickPlus extension the extension holds
+on (`betterchat/relay.py`, on [kicksdk](https://github.com/AnisAbdellatif/kicksdk),
+which speaks Kick's side of it). Inside the KickPlus extension the extension holds
 that connection from the kick.com tab instead, and nothing goes through the
 relay. The same Python server (FastAPI, run with uv) hands out the page and
 carries an admin board. One process, one hostname, published from a VPS with

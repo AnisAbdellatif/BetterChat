@@ -6,7 +6,9 @@ with the chat. Kick has since moved to Centrifugo, and that server refuses a
 WebSocket whose Origin is not kick.com (betterchat.tech gets a 403 on the
 handshake), and the endpoints that hand out its address and tokens answer CORS
 for kick.com alone. A page on this origin cannot reach it, so this server does,
-and passes on what arrives.
+and passes on what arrives. Kick's side of it - where to connect, the token,
+the protocol - is kicksdk's (https://github.com/AnisAbdellatif/kicksdk); this
+file holds the connections and hands the frames on.
 
 One upstream connection per chatroom, however many viewers have it open, kept
 for a little while after the last one leaves so a reload does not cost a new
@@ -31,21 +33,13 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 
+import kicksdk
+
 log = logging.getLogger("betterchat.relay")
 
-KICK_REALTIME_API = "https://web.kick.com/api/v1/realtime"
-KICK_ORIGIN = "https://kick.com"
-# Kick's API sits behind Cloudflare, which is wary of a client that does not
-# say it is a browser.
-USER_AGENT = (
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/130.0.0.0 Safari/537.36"
-)
-# A connection token lives 45 minutes; a new one is sent this long before.
-TOKEN_REFRESH_LEAD_SEC = 120
-# Centrifugo pings every `ping` seconds (25 today); a connection silent for
-# that long plus this is taken as dead.
-PING_GRACE_SEC = 20
+# Kick's API sits behind Cloudflare, which is wary of a client that claims to
+# be a browser and is not one; a bare product token passes.
+USER_AGENT = "Mozilla/5.0"
 CLIENT_PING_SEC = 25
 LINGER_SEC = 30
 MAX_BACKOFF_SEC = 30
@@ -61,169 +55,93 @@ def frame(event: str, **fields) -> str:
 
 
 def kick_channels(chatroom_id: int, channel_id: int | None) -> list[str]:
-    """The channels Kick's own page joins for one chat, and where each kind of
-    event arrives: chat, deletions, bans, subs and clears on chatrooms.<id>.v2;
-    gifted subs and rewards on chatroom_<id>; hosts on chatrooms.<id>; Kicks on
-    channel_<id>; live and offline on channel.<id>."""
-    names = [f"chatrooms.{chatroom_id}.v2", f"chatrooms.{chatroom_id}", f"chatroom_{chatroom_id}"]
-    if channel_id:
-        names += [f"channel.{channel_id}", f"channel_{channel_id}"]
-    return names
+    """The feeds Kick's own page joins for one chat (kicksdk knows which)."""
+    return kicksdk.realtime.chat_channels(chatroom_id, channel_id)
+
+
+def _now() -> int:
+    return int(time.monotonic() * 1000)
 
 
 class KickUpstream:
-    """One connection to Kick's Centrifugo, held for as long as it lasts.
+    """One connection to Kick's realtime feed, held for as long as it lasts.
 
-    Called once per attempt; returns (or raises) when the connection is gone,
-    and the feed decides when to try again."""
+    kicksdk speaks Kick: where to connect, the guest token, and the Centrifugo
+    protocol as a state machine (kicksdk.realtime.Session). This only carries
+    its requests and frames. Called once per attempt; returns (or raises) when
+    the connection is gone, and the feed decides when to try again."""
 
     def __init__(self) -> None:
         import httpx
 
-        self.http = httpx.AsyncClient(
-            timeout=10,
-            headers={
-                "user-agent": USER_AGENT,
-                "accept": "application/json",
-                "origin": KICK_ORIGIN,
-                "referer": KICK_ORIGIN + "/",
-            },
-        )
+        self.http = httpx.AsyncClient(timeout=10, headers={"user-agent": USER_AGENT})
 
     async def aclose(self) -> None:
         await self.http.aclose()
 
-    async def _post(self, path: str, body: dict) -> dict:
-        res = await self.http.post(KICK_REALTIME_API + path, json=body)
-        res.raise_for_status()
-        data = res.json().get("data")
-        if not isinstance(data, dict):
-            raise RuntimeError(f"Kick answered {path} without data")
-        return data
-
-    async def _url(self, channel_id: int | None, client_id: str) -> str:
-        # Kick places each channel's chat on a region of its own and says
-        # which; the general endpoint is for a chatroom with no channel id.
-        body = {
-            "client": {"id": client_id, "type": "web"},
-            "capabilities": {"accepted_providers": [{"provider": "centrifugo"}]},
-        }
-        path = f"/channels/{channel_id}/chat/connection" if channel_id else "/connection"
-        data = await self._post(path, body)
-        for conn in data.get("connections") or []:
-            url = (conn.get("credentials") or {}).get("url")
-            if conn.get("provider") == "centrifugo" and isinstance(url, str) and url.startswith("wss://"):
-                return url
-        raise RuntimeError(f"Kick offered no Centrifugo connection: {data!r}")
-
-    async def _token(self, client_id: str) -> str:
-        token = (await self._post("/auth/connection", {"client_id": client_id})).get("token")
-        if not isinstance(token, str) or not token:
-            raise RuntimeError("Kick returned no connection token")
-        return token
+    async def _send(self, req: kicksdk.Request) -> tuple[int, str]:
+        res = await self.http.request(req.method, req.url, headers=req.headers, content=req.body)
+        return res.status_code, res.text
 
     async def __call__(
         self, chatroom_id: int, channel_id: int | None, on_subscribed: OnSubscribed, on_event: OnEvent
     ) -> None:
         from websockets.asyncio.client import connect
 
-        # A guest identity: the token's subject is guest:<client_id>, and a
-        # refreshed token has to carry the same one.
+        rt = kicksdk.realtime
+        # A guest identity: the token is issued to this id, and so is every
+        # refreshed one for this connection.
         client_id = str(uuid.uuid4())
-        url = await self._url(channel_id, client_id)
-        token = await self._token(client_id)
+        where = (
+            rt.chat_connection_request(channel_id, client_id)
+            if channel_id
+            else rt.connection_request(client_id)
+        )
+        servers = [c for c in rt.parse_connection(*await self._send(where)) if c.get("provider") == "centrifugo"]
+        if not servers:
+            raise RuntimeError("Kick offered no Centrifugo server")
+        token = rt.parse_token(*await self._send(rt.token_request(client_id)))
         channels = kick_channels(chatroom_id, channel_id)
-        chat_channel = channels[0]
+        session = rt.Session(channels)
 
         async with connect(
-            url,
-            origin=KICK_ORIGIN,
+            servers[0]["url"],
+            origin=rt.REQUIRED_ORIGIN,
             user_agent_header=USER_AGENT,
-            ping_interval=None,  # Centrifugo pings in the protocol itself
+            ping_interval=None,  # Kick pings in the protocol itself
             max_size=2**22,
             open_timeout=15,
         ) as ws:
-            next_id = 1
 
-            async def command(body: dict) -> int:
-                nonlocal next_id
-                next_id += 1
-                await ws.send(json.dumps({"id": next_id, **body}))
-                return next_id
+            async def carry_out(actions: list[dict]) -> None:
+                for a in actions:
+                    kind = a["action"]
+                    if kind == "send":
+                        await ws.send(a["text"])
+                    elif kind == "close":
+                        raise RuntimeError(a["reason"])
+                    elif kind == "refresh_token":
+                        fresh = rt.parse_token(*await self._send(rt.token_request(client_id)))
+                        await carry_out(session.refresh(fresh, _now()))
+                    elif kind == "subscribed" and a["channel"] == channels[0]:
+                        on_subscribed(True)
+                    elif kind == "subscribe_failed":
+                        log.warning("Kick refused %s: %s", a["channel"], a["message"])
+                    elif kind == "event":
+                        on_event(a["channel"], a["name"], a["data"])
 
-            await ws.send(json.dumps({"id": 1, "connect": {"token": token, "name": "js"}}))
-            pending_subs: dict[int, str] = {}
-            ping_sec = 25
-            refresh_at: float | None = None
-            connected = False
-
+            await carry_out(session.open(token, _now()))
             while True:
-                timeout = ping_sec + PING_GRACE_SEC
-                if refresh_at is not None:
-                    timeout = max(0.0, min(timeout, refresh_at - time.monotonic()))
+                deadline = session.deadline
+                timeout = None if deadline is None else max(0.0, (deadline - _now()) / 1000)
                 try:
                     raw = await asyncio.wait_for(ws.recv(), timeout)
                 except TimeoutError:
-                    if refresh_at is not None and time.monotonic() >= refresh_at:
-                        refresh_at = None
-                        await command({"refresh": {"token": await self._token(client_id)}})
-                        continue
-                    raise RuntimeError("Kick went quiet") from None
+                    await carry_out(session.tick(_now()))
+                    continue
                 if isinstance(raw, bytes):
                     raw = raw.decode("utf-8", "replace")
-
-                # Several replies can share one message, a line each.
-                for line in raw.split("\n"):
-                    if not line:
-                        continue
-                    if line == "{}":
-                        await ws.send("{}")
-                        continue
-                    try:
-                        msg = json.loads(line)
-                    except ValueError:
-                        continue
-                    if not isinstance(msg, dict):
-                        continue
-
-                    if "error" in msg:
-                        if msg.get("id") == 1:
-                            raise RuntimeError(f"Kick refused the connection: {msg['error']}")
-                        name = pending_subs.pop(msg.get("id"), None)
-                        log.warning("Kick refused %s: %s", name or msg.get("id"), msg["error"])
-                        if name == chat_channel:
-                            raise RuntimeError("Kick refused the chat channel")
-                        continue
-
-                    reply = msg.get("connect") if msg.get("id") == 1 else msg.get("refresh")
-                    if isinstance(reply, dict):
-                        if isinstance(reply.get("ping"), int) and reply["ping"] > 0:
-                            ping_sec = reply["ping"]
-                        ttl = reply.get("ttl")
-                        if reply.get("expires") and isinstance(ttl, int) and ttl > 0:
-                            refresh_at = time.monotonic() + max(ttl - TOKEN_REFRESH_LEAD_SEC, ttl / 2)
-                        if not connected:
-                            connected = True
-                            for name in channels:
-                                pending_subs[await command({"subscribe": {"channel": name}})] = name
-                        continue
-
-                    if "subscribe" in msg:
-                        if pending_subs.pop(msg.get("id"), None) == chat_channel:
-                            on_subscribed(True)
-                        continue
-
-                    push = msg.get("push")
-                    if not isinstance(push, dict):
-                        continue
-                    if "disconnect" in push:
-                        raise RuntimeError(f"Kick disconnected: {push['disconnect']}")
-                    if "unsub" in push and push.get("channel") == chat_channel:
-                        raise RuntimeError("Kick unsubscribed the chat channel")
-                    pub = push.get("pub")
-                    data = pub.get("data") if isinstance(pub, dict) else None
-                    if isinstance(data, dict) and isinstance(data.get("event"), str):
-                        on_event(push.get("channel", ""), data["event"], data.get("data"))
+                await carry_out(session.receive(raw, _now()))
 
 
 class Feed:
