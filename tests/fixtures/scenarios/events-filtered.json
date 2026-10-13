@@ -1,0 +1,37 @@
+{
+  "description": "each event kind switched off draws nothing",
+  "settings": {
+    "showSubs": false,
+    "showGifts": false,
+    "showKicks": false,
+    "showRewards": false,
+    "showHosts": false,
+    "showModeration": false
+  },
+  "steps": [
+    {
+      "join": true
+    },
+    {
+      "frame": "sub-new"
+    },
+    {
+      "frame": "gift-3"
+    },
+    {
+      "frame": "kicks-message"
+    },
+    {
+      "frame": "reward"
+    },
+    {
+      "frame": "host"
+    },
+    {
+      "frame": "chat-cleared"
+    },
+    {
+      "frame": "ban-bob"
+    }
+  ]
+}

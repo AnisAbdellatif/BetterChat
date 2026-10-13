@@ -1,0 +1,1 @@
+{"event":"App\\Events\\SubscriptionEvent","data":"{\"chatroom_id\":668,\"username\":\"newbie\",\"months\":1}","channel":"chatrooms.668.v2"}

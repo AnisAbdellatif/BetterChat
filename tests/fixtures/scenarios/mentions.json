@@ -1,0 +1,44 @@
+{
+  "description": "unknown @names are looked up one at a time, 400ms apart; a real user is verified, a 404 stays plain and is not asked again; a name that speaks is verified without asking",
+  "rest": {
+    "/channels/xqc/users/Carol": "kick/user-carol.json"
+  },
+  "steps": [
+    {
+      "join": true
+    },
+    {
+      "frame": "message-mentions-me"
+    },
+    {
+      "advance": 400
+    },
+    {
+      "advance": 400
+    },
+    {
+      "frame": "message-rich"
+    },
+    {
+      "frame": "message-bob"
+    },
+    {
+      "advance": 400
+    },
+    {
+      "frame": "message-everyone-speaks"
+    },
+    {
+      "advance": 400
+    },
+    {
+      "call": "parts",
+      "args": [
+        "again @Carol @viewerMe @nobody"
+      ]
+    },
+    {
+      "advance": 400
+    }
+  ]
+}

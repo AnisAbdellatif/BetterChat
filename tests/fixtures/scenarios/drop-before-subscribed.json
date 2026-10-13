@@ -1,0 +1,14 @@
+{
+  "description": "a socket lost before Kick ever confirmed the chat subscription is still 'connecting', not 'reconnecting'",
+  "logJoin": true,
+  "steps": [
+    {"start": true},
+    {"open": true},
+    {"frame": "connection-established"},
+    {"drop": true},
+    {"advance": 1000},
+    {"open": true},
+    {"frame": "connection-established"},
+    {"frame": "subscribed-chat"}
+  ]
+}

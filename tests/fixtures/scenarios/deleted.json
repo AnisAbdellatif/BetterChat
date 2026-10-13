@@ -1,0 +1,44 @@
+{
+  "description": "a deleted message under each deleted-messages setting: grayed, removed, left alone",
+  "steps": [
+    {
+      "join": true
+    },
+    {
+      "frame": "message-mod-1"
+    },
+    {
+      "frame": "message-mod-2"
+    },
+    {
+      "frame": "message-mod-3"
+    },
+    {
+      "settings": {
+        "deletedMessages": "gray"
+      }
+    },
+    {
+      "frame": "deleted-1"
+    },
+    {
+      "settings": {
+        "deletedMessages": "remove"
+      }
+    },
+    {
+      "frame": "deleted-2"
+    },
+    {
+      "settings": {
+        "deletedMessages": "keep"
+      }
+    },
+    {
+      "frame": "deleted-3"
+    },
+    {
+      "frame": "deleted-2"
+    }
+  ]
+}

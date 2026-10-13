@@ -1,0 +1,43 @@
+{
+  "description": "the same message from the same user is counted onto the row (case/whitespace-insensitive), another user's is not, and the window running out starts a fresh row",
+  "steps": [
+    {
+      "join": true
+    },
+    {
+      "frame": "message-spam-1"
+    },
+    {
+      "frame": "message-spam-2"
+    },
+    {
+      "frame": "message-spam-3"
+    },
+    {
+      "frame": "message-spam-other"
+    },
+    {
+      "advance": 7000
+    },
+    {
+      "frame": "message-spam-4"
+    },
+    {
+      "settings": {
+        "dedupeRepeats": 2
+      }
+    },
+    {
+      "advance": 7000
+    },
+    {
+      "frame": "message-spam-5"
+    },
+    {
+      "frame": "message-spam-6"
+    },
+    {
+      "frame": "message-spam-7"
+    }
+  ]
+}

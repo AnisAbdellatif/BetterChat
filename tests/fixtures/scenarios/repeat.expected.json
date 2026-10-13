@@ -1,0 +1,261 @@
+[
+  {
+    "frame": "message-spam-1"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r4",
+          "msgId": "m-spam-1",
+          "type": "message",
+          "username": "Ann",
+          "user": "ann",
+          "senderId": 1001,
+          "text": "Pog Pog",
+          "createdAt": "2026-09-08T18:00:11+00:00",
+          "color": "#FF9D00",
+          "kickColor": "#FF9D00",
+          "badges": [
+            {
+              "key": 0,
+              "kind": "subscriber",
+              "title": "Subscriber (8 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "Pog Pog"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      }
+    ]
+  },
+  {
+    "frame": "message-spam-2"
+  },
+  {
+    "ops": [
+      {
+        "op": "update",
+        "id": "r4",
+        "patch": {
+          "repeats": 2
+        }
+      }
+    ]
+  },
+  {
+    "frame": "message-spam-3"
+  },
+  {
+    "ops": [
+      {
+        "op": "update",
+        "id": "r4",
+        "patch": {
+          "repeats": 3
+        }
+      }
+    ]
+  },
+  {
+    "frame": "message-spam-other"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r5",
+          "msgId": "m-spam-other",
+          "type": "message",
+          "username": "bob_42",
+          "user": "bob_42",
+          "senderId": 1002,
+          "text": "Pog Pog",
+          "createdAt": "2026-09-08T18:00:15+00:00",
+          "color": "#93EBFF",
+          "kickColor": "#93EBFF",
+          "badges": [],
+          "parts": [
+            {
+              "t": "text",
+              "text": "Pog Pog"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      }
+    ]
+  },
+  {
+    "advance": 7000
+  },
+  {
+    "frame": "message-spam-4"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r6",
+          "msgId": "m-spam-4",
+          "type": "message",
+          "username": "Ann",
+          "user": "ann",
+          "senderId": 1001,
+          "text": "Pog Pog",
+          "createdAt": "2026-09-08T18:00:14+00:00",
+          "color": "#FF9D00",
+          "kickColor": "#FF9D00",
+          "badges": [
+            {
+              "key": 0,
+              "kind": "subscriber",
+              "title": "Subscriber (8 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "Pog Pog"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      }
+    ]
+  },
+  {
+    "settings": {
+      "dedupeRepeats": 2
+    }
+  },
+  {
+    "advance": 7000
+  },
+  {
+    "frame": "message-spam-5"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r7",
+          "msgId": "m-spam-5",
+          "type": "message",
+          "username": "Ann",
+          "user": "ann",
+          "senderId": 1001,
+          "text": "Pog Pog",
+          "createdAt": "2026-09-08T18:00:15+00:00",
+          "color": "#FF9D00",
+          "kickColor": "#FF9D00",
+          "badges": [
+            {
+              "key": 0,
+              "kind": "subscriber",
+              "title": "Subscriber (8 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "Pog Pog"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      }
+    ]
+  },
+  {
+    "frame": "message-spam-6"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r8",
+          "msgId": "m-spam-6",
+          "type": "message",
+          "username": "Ann",
+          "user": "ann",
+          "senderId": 1001,
+          "text": "Pog Pog",
+          "createdAt": "2026-09-08T18:00:16+00:00",
+          "color": "#FF9D00",
+          "kickColor": "#FF9D00",
+          "badges": [
+            {
+              "key": 0,
+              "kind": "subscriber",
+              "title": "Subscriber (8 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "Pog Pog"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      }
+    ]
+  },
+  {
+    "frame": "message-spam-7"
+  },
+  {
+    "ops": [
+      {
+        "op": "update",
+        "id": "r8",
+        "patch": {
+          "repeats": 2
+        }
+      }
+    ]
+  }
+]

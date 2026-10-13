@@ -1,0 +1,63 @@
+[
+  {
+    "frame": "message-reply"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r4",
+          "msgId": "m-reply",
+          "type": "reply",
+          "username": "Xqcs_Driving_Instructor",
+          "user": "xqcs_driving_instructor",
+          "senderId": 105312993,
+          "text": "no they all metagaming",
+          "createdAt": "2026-09-08T18:00:10+00:00",
+          "color": "#FFFFFF",
+          "kickColor": "#FFFFFF",
+          "badges": [
+            {
+              "key": 0,
+              "kind": "subscriber",
+              "title": "Subscriber (39 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "no they all metagaming"
+            }
+          ],
+          "reply": {
+            "msgId": "dd4156fd-3d5b-464d-9b72-15642fb9394b",
+            "username": "Kreygasmo",
+            "senderId": 20631072,
+            "text": "are they supposed to remember [emote:37226:KEKW]",
+            "parts": [
+              {
+                "t": "text",
+                "text": "are they supposed to remember "
+              },
+              {
+                "t": "emote",
+                "id": "37226",
+                "name": "KEKW",
+                "url": "https://files.kick.com/emotes/37226/fullsize",
+                "count": 1
+              }
+            ]
+          },
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      }
+    ]
+  }
+]

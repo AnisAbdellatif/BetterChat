@@ -1,0 +1,20 @@
+{
+  "description": "a message with emotes, badges of every source, a known and an unknown mention, and the mention-of-me highlight",
+  "settings": {
+    "mentionMe": "viewerMe"
+  },
+  "rest": {
+    "/channels/668/messages": "kick/history.json"
+  },
+  "steps": [
+    {
+      "join": true
+    },
+    {
+      "frame": "message-rich"
+    },
+    {
+      "frame": "message-mentions-me"
+    }
+  ]
+}

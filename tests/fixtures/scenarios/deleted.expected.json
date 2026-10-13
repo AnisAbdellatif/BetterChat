@@ -1,0 +1,168 @@
+[
+  {
+    "frame": "message-mod-1"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r4",
+          "msgId": "m-mod-1",
+          "type": "message",
+          "username": "Ann",
+          "user": "ann",
+          "senderId": 1001,
+          "text": "message 1",
+          "createdAt": "2026-09-08T18:00:31+00:00",
+          "color": "#FF9D00",
+          "kickColor": "#FF9D00",
+          "badges": [
+            {
+              "key": 0,
+              "kind": "subscriber",
+              "title": "Subscriber (8 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "message 1"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      }
+    ]
+  },
+  {
+    "frame": "message-mod-2"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r5",
+          "msgId": "m-mod-2",
+          "type": "message",
+          "username": "bob_42",
+          "user": "bob_42",
+          "senderId": 1002,
+          "text": "message 2",
+          "createdAt": "2026-09-08T18:00:32+00:00",
+          "color": "#93EBFF",
+          "kickColor": "#93EBFF",
+          "badges": [],
+          "parts": [
+            {
+              "t": "text",
+              "text": "message 2"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      }
+    ]
+  },
+  {
+    "frame": "message-mod-3"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r6",
+          "msgId": "m-mod-3",
+          "type": "message",
+          "username": "Ann",
+          "user": "ann",
+          "senderId": 1001,
+          "text": "message 3",
+          "createdAt": "2026-09-08T18:00:33+00:00",
+          "color": "#FF9D00",
+          "kickColor": "#FF9D00",
+          "badges": [
+            {
+              "key": 0,
+              "kind": "subscriber",
+              "title": "Subscriber (8 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "message 3"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      }
+    ]
+  },
+  {
+    "settings": {
+      "deletedMessages": "gray"
+    }
+  },
+  {
+    "frame": "deleted-1"
+  },
+  {
+    "ops": [
+      {
+        "op": "update",
+        "id": "r4",
+        "patch": {
+          "deleted": "deleted"
+        }
+      }
+    ]
+  },
+  {
+    "settings": {
+      "deletedMessages": "remove"
+    }
+  },
+  {
+    "frame": "deleted-2"
+  },
+  {
+    "ops": [
+      {
+        "op": "remove",
+        "id": "r5"
+      }
+    ]
+  },
+  {
+    "settings": {
+      "deletedMessages": "keep"
+    }
+  },
+  {
+    "frame": "deleted-3"
+  },
+  {
+    "frame": "deleted-2"
+  }
+]

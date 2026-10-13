@@ -1,0 +1,28 @@
+{
+  "description": "a run of one emote is one part with a count, and runs of different lengths count as the same message; with collapsing off, every emote is its own part",
+  "steps": [
+    {
+      "join": true
+    },
+    {
+      "frame": "message-combo-3"
+    },
+    {
+      "frame": "message-combo-5"
+    },
+    {
+      "frame": "message-combo-mixed"
+    },
+    {
+      "settings": {
+        "collapseEmotes": false
+      }
+    },
+    {
+      "advance": 7000
+    },
+    {
+      "frame": "message-combo-3b"
+    }
+  ]
+}

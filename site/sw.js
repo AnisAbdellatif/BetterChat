@@ -1,10 +1,13 @@
 // BetterChat's service worker: keeps the chat usable when betterchat.tech
 // isn't.
 //
-// The page is entirely client-side - kick.js talks to kick.com directly for
-// both the REST API and the Pusher feed - so once the shell is cached, this
-// origin going down costs nothing but the heartbeats, which already fail
-// silently. Chat keeps rendering.
+// kick.js talks to kick.com directly for the REST API, so once the shell is
+// cached, this origin going down costs the heartbeats, which already fail
+// silently, and the live feed, which comes through this origin's /realtime
+// relay (Kick's realtime server takes connections from kick.com alone).
+// History still loads; the page reconnects to the feed when the origin is back.
+// Inside the KickPlus extension the feed comes from the extension instead, and
+// chat keeps rendering either way.
 //
 // The site has no build step, so filenames never change and a long max-age
 // from the server would risk pinning viewers to stale JS forever. Instead the
@@ -26,7 +29,7 @@ const CACHE = `betterchat-${BUILD}`;
 // reads its channel from location.pathname, so one copy under a fixed key
 // answers a navigation to any channel.
 const SHELL = '/';
-const ASSETS = [SHELL, '/app.js', '/settings.js', '/defaults.json', '/kick.js', '/config.js', '/favicon.ico'];
+const ASSETS = [SHELL, '/app.js', '/settings.js', '/defaults.json', '/kick.js', '/core.js', '/config.js', '/favicon.ico'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -83,8 +86,9 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
-  // Kick's API, its emote images and the Pusher feed are all cross-origin
-  // and must never be touched here.
+  // Kick's API and its emote images are cross-origin and must never be
+  // touched here. (The /realtime feed is a WebSocket, which a worker never
+  // sees.)
   if (url.origin !== self.location.origin) return;
   // Heartbeats and the admin board are live data, never cached. The privacy
   // policy is skipped for a subtler reason: navigations are cached under the

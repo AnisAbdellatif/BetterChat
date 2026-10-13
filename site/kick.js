@@ -4,12 +4,17 @@
 //   KickApi      - Kick's unofficial REST API (channel resolution, pinned
 //                  message + recent history, user cards), with a small TTL
 //                  cache. Kick answers cross-origin requests with CORS.
-//   PusherRelay  - one WebSocket to Kick's Pusher feed, subscribed to the
-//                  chatroom (chat) and channel (live/offline) channels,
-//                  with ping/pong keepalive and reconnect with backoff.
-//   normalize*   - turn Kick's raw payloads into the shapes app.js renders.
+//   FeedRelay    - one WebSocket to the chat feed: BetterChat's /realtime
+//                  relay (betterchat/relay.py), or the KickPlus extension
+//                  standing in for it. Ping/pong keepalive and reconnect
+//                  with backoff.
+//   normalize*   - turn Kick's raw payloads into the shapes core.js works on.
 //
-// Loaded as a classic <script>; also require()-able from Node for tests.
+// Loaded as a classic <script>; also require()-able from Node for tests, and
+// evaluated as a plain script by the desktop app's embedded QuickJS, which has
+// no fetch, WebSocket or timers of its own. KickApi and FeedRelay take those
+// as options for that reason, and only fall back to the browser's globals when
+// none are given - see core.js, which is what hands them over.
 (function (root, factory) {
   const api = factory();
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
@@ -36,6 +41,12 @@
     giftedPlain: 'GiftedSubscriptionsEvent',
     // Kicks: Kick's paid gifts. Not prefixed either, and on channel_<id>.
     kicks: 'KicksGifted',
+    // Channel-point reward redemptions, on the underscore chatroom_<id> feed
+    // beside gifted subs. Kick binds it unprefixed; the App\Events form is
+    // accepted too in case the feed ever sends it that way, the same guard
+    // gifted subs already get with giftedPlain.
+    reward: 'RewardRedeemedEvent',
+    rewardPrefixed: 'App\\Events\\RewardRedeemedEvent',
     host: 'App\\Events\\StreamHostEvent',
     // Deliberately absent: App\Events\StreamHostedEvent, which Kick sends on
     // chatrooms.<id> for the same host it sends StreamHostEvent for on
@@ -99,7 +110,7 @@
     };
   }
 
-  // A chat message as app.js expects it, or null for anything malformed.
+  // A chat message as core.js expects it, or null for anything malformed.
   function normalizeMessage(data) {
     if (!data || typeof data !== 'object') return null;
     const sender = data.sender || {};
@@ -130,21 +141,25 @@
   }
 
   // Pin durations from Kick are MINUTES (default pin = 1200 = 20h); the
-  // history endpoint also gives an absolute `finish_at`.
-  function buildPin(data) {
+  // history endpoint also gives an absolute `finish_at`. `nowMs` is the clock
+  // the expiry is counted from, passed in by whoever has one to hand (a test's
+  // fake clock, the desktop app's); Date.now() when nobody does.
+  function buildPin(data, nowMs) {
     const message = normalizeMessage(data && data.message);
     if (!message) return null;
     const durationMin = integer(data.duration);
     let expiresAt = str(data.finish_at);
     if (!expiresAt && durationMin && durationMin > 0) {
-      expiresAt = new Date(Date.now() + durationMin * 60000).toISOString();
+      const now = typeof nowMs === 'number' ? nowMs : Date.now();
+      expiresAt = new Date(now + durationMin * 60000).toISOString();
     }
     const by = (data.pinnedBy && str(data.pinnedBy.username)) || (data.pinned_by && str(data.pinned_by.username)) || null;
     return { type: 'pin_created', message, duration_min: durationMin, expires_at: expiresAt, by };
   }
 
-  // Non-message Pusher events -> {type, ...} for app.js, or null to ignore.
-  function normalizeEvent(name, data) {
+  // Non-message Kick events -> {type, ...} for core.js, or null to ignore.
+  // `nowMs` only matters to a pin, whose expiry is counted from it.
+  function normalizeEvent(name, data, nowMs) {
     data = data && typeof data === 'object' ? data : {};
     switch (name) {
       case EV.deleted: {
@@ -170,7 +185,7 @@
           by: data.unbanned_by && str(data.unbanned_by.username),
         };
       case EV.pinCreated:
-        return buildPin(data);
+        return buildPin(data, nowMs);
       case EV.pinDeleted:
         return { type: 'pin_deleted' };
       case EV.subscription:
@@ -201,6 +216,21 @@
           amount: integer(gift.amount) || 0,
           tier: str(gift.tier),
           message: str(data.message),
+        };
+      }
+      // Channel points. Kick's shape has varied - the title has come as
+      // `reward_title` and, nested, as `reward.title`; what the redeemer typed
+      // as `user_input`. Both spellings are read so a redemption is never
+      // drawn blank. `user_input` is only present on rewards set up to require
+      // it, so it is shown where there is one, the way a Kicks message is.
+      case EV.reward:
+      case EV.rewardPrefixed: {
+        const reward = (data && data.reward) || {};
+        return {
+          type: 'reward',
+          username: str(data.username) || (data.user && str(data.user.username)),
+          reward: str(data.reward_title) || str(reward.title) || str(data.title),
+          input: str(data.user_input) || str(data.input) || str(data.message),
         };
       }
       case EV.host:
@@ -234,9 +264,17 @@
   const MAX_CACHE_ENTRIES = 200;
 
   class KickApi {
-    constructor({ baseUrl = 'https://kick.com/api/v2', fetchImpl } = {}) {
+    // `fetchImpl` and `now` default to the browser's own. A host without them
+    // passes its own: fetchImpl(url, init) only has to answer a GET with
+    // `ok`, `status` and `json()`. Both are called as plain functions, never
+    // as methods of this object, so the browser's own fetch can be passed
+    // as it is.
+    constructor({ baseUrl = 'https://kick.com/api/v2', fetchImpl, now } = {}) {
       this.baseUrl = baseUrl.replace(/\/+$/, '');
-      this.fetch = fetchImpl || ((...a) => fetch(...a));
+      const fetchFn = fetchImpl || ((...a) => fetch(...a));
+      const nowFn = now || (() => Date.now());
+      this.fetch = (url, init) => fetchFn(url, init);
+      this.now = () => nowFn();
       this.cache = new Map(); // key -> {value, expiresAt}
     }
 
@@ -255,10 +293,10 @@
     // oldest first - Map iterates in insertion order.
     async cached(key, ttlMs, load) {
       const hit = this.cache.get(key);
-      if (hit && hit.expiresAt > Date.now()) return hit.value;
+      if (hit && hit.expiresAt > this.now()) return hit.value;
       if (hit) this.cache.delete(key);
       const value = await load();
-      this.cache.set(key, { value, expiresAt: Date.now() + ttlMs });
+      this.cache.set(key, { value, expiresAt: this.now() + ttlMs });
       while (this.cache.size > MAX_CACHE_ENTRIES) {
         this.cache.delete(this.cache.keys().next().value);
       }
@@ -291,11 +329,17 @@
     async pinnedAndHistory(channelId) {
       const body = await this.get(`/channels/${encodeURIComponent(channelId)}/messages`);
       const data = body.data || {};
+      // Ties keep Kick's order. A browser's sort is stable and does that on its
+      // own; the index makes it so wherever this runs.
       const messages = list(data.messages)
         .map(normalizeMessage)
         .filter(Boolean)
-        .sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
-      const pinned = data.pinned_message && typeof data.pinned_message === 'object' ? buildPin(data.pinned_message) : null;
+        .map((m, at) => ({ m, at }))
+        .sort((a, b) => String(a.m.created_at || '').localeCompare(String(b.m.created_at || '')) || a.at - b.at)
+        .map(({ m }) => m);
+      const pinned = data.pinned_message && typeof data.pinned_message === 'object'
+        ? buildPin(data.pinned_message, this.now())
+        : null;
       return { pinned, messages };
     }
 
@@ -362,27 +406,54 @@
   }
 
   // ---------------------------------------------------------------------
-  // Pusher relay (port of pusher_relay.ex)
+  // The chat feed
+  //
+  // Kick's realtime server only takes connections from kick.com, so this page
+  // cannot hold one itself. The relay does (betterchat/relay.py) and passes
+  // Kick's events on as they came, one JSON text frame each:
+  //
+  //   {event: 'relay:connected'}         the relay has this socket
+  //   {event: 'relay:subscribed'}        Kick confirmed the chat channel
+  //   {event: 'relay:unsubscribed'}      the relay lost Kick, and is back on it
+  //   {event: 'relay:ping' | 'relay:pong'}
+  //   {event, channel, data}             a Kick event; data usually a JSON string
+  //
+  // Inside the KickPlus extension the extension speaks the same frames from
+  // its own connection on kick.com, through a socket app.js hands over.
   // ---------------------------------------------------------------------
 
   const MAX_BACKOFF_MS = 30000;
   const PONG_TIMEOUT_MS = 30000;
+  // The relay pings every 25 s; a socket silent for this long gets asked.
+  const ACTIVITY_TIMEOUT_MS = 60000;
 
-  class PusherRelay {
+  class FeedRelay {
     /**
      * @param {object} opts
-     * @param {string} opts.appKey        Kick's public Pusher app key
-     * @param {string} opts.cluster       e.g. "us2"
-     * @param {number} opts.chatroomId    subscribes to chatrooms.<id>.v2
-     * @param {number} [opts.channelId]   also subscribes to channel.<id> (live/offline)
+     * @param {string} opts.url           the relay's address, e.g. wss://betterchat.tech/realtime
+     * @param {number} opts.chatroomId    the chat
+     * @param {number} [opts.channelId]   also the channel's own events (live/offline, Kicks)
      * @param {(msg) => void} opts.onMessage
      * @param {(ev) => void}  opts.onEvent
      * @param {(open: boolean) => void} [opts.onSocket]      socket opened / closed
      * @param {(ok: boolean) => void}   [opts.onSubscribed]  chatroom subscription confirmed / lost
      * @param {(name, data) => void}    [opts.onUnknown]     events we don't recognize (for debugging)
+     * @param {Function} [opts.WebSocket]     socket constructor; the browser's by default
+     * @param {Function} [opts.setTimeout]    timers; the global ones by default. clearTimeout
+     * @param {Function} [opts.clearTimeout]  has to accept null, as the browser's does
+     * @param {() => number} [opts.now]       clock for a pin's expiry; Date.now by default
      */
     constructor(opts) {
       this.o = opts;
+      // The globals are looked up when called rather than here, so a page that
+      // passes nothing keeps using whatever they are at the time. Given ones
+      // are called as plain functions, so the browser's own can be passed.
+      const setTimer = opts.setTimeout || ((fn, ms) => setTimeout(fn, ms));
+      const clearTimer = opts.clearTimeout || ((t) => clearTimeout(t));
+      const now = opts.now;
+      this.setTimer = (fn, ms) => setTimer(fn, ms);
+      this.clearTimer = (t) => clearTimer(t);
+      this.clock = now ? () => now() : null;
       this.ws = null;
       this.backoffMs = 1000;
       this.closed = false;
@@ -390,28 +461,13 @@
       this.pingTimer = null;
       this.pongTimer = null;
       this.reconnectTimer = null;
-      this.activityTimeoutMs = 120000;
     }
 
     url() {
-      return `wss://ws-${this.o.cluster}.pusher.com/app/${this.o.appKey}?protocol=7&client=js&version=8.4.0&flash=false`;
-    }
-
-    // The four Kick's own page joins, and it does not put everything on one.
-    // Read off its bundle: chat, deletions, bans, subs and clears are on
-    // chatrooms.<id>.v2; gifted subs and reward redemptions on the underscore
-    // form chatroom_<id>; hosts on chatrooms.<id>; and Kicks on channel_<id>.
-    //
-    // Subscribing to .v2 alone is why gifted subs never arrived here: the
-    // handler was right and nothing was ever delivered to it.
-    channels() {
-      const list = [`chatrooms.${this.o.chatroomId}.v2`, `chatrooms.${this.o.chatroomId}`];
-      list.push(`chatroom_${this.o.chatroomId}`);
-      if (this.o.channelId) {
-        list.push(`channel.${this.o.channelId}`);
-        list.push(`channel_${this.o.channelId}`);
-      }
-      return list;
+      const base = String(this.o.url || '');
+      let url = `${base}${base.includes('?') ? '&' : '?'}chatroom=${encodeURIComponent(this.o.chatroomId)}`;
+      if (this.o.channelId) url += `&channel=${encodeURIComponent(this.o.channelId)}`;
+      return url;
     }
 
     connect() {
@@ -419,7 +475,8 @@
       this.clearTimers();
       let ws;
       try {
-        ws = new WebSocket(this.url());
+        const Socket = this.o.WebSocket || WebSocket;
+        ws = new Socket(this.url());
       } catch (_e) {
         this.scheduleReconnect();
         return;
@@ -427,6 +484,7 @@
       this.ws = ws;
       ws.onopen = () => {
         this.backoffMs = 1000;
+        this.armPing();
         if (this.o.onSocket) this.o.onSocket(true);
       };
       ws.onmessage = (e) => this.handleFrame(e.data);
@@ -436,19 +494,29 @@
       ws.onclose = () => {
         if (this.ws !== ws) return;
         this.ws = null;
-        this.setSubscribed(false);
-        if (this.o.onSocket) this.o.onSocket(false);
-        this.scheduleReconnect();
+        // Reconnecting must not depend on the callbacks behaving: one that
+        // throws would otherwise leave the chat disconnected for good.
+        try {
+          this.setSubscribed(false);
+        } finally {
+          try {
+            if (this.o.onSocket) this.o.onSocket(false);
+          } finally {
+            this.scheduleReconnect();
+          }
+        }
       };
     }
 
+    // For good: the socket is let go of entirely, so nothing it still
+    // delivers - a frame already on its way, a late open - reaches anyone.
     close() {
       this.closed = true;
       this.clearTimers();
       if (this.ws) {
         const ws = this.ws;
         this.ws = null;
-        ws.onclose = null;
+        ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null;
         ws.close();
       }
     }
@@ -466,37 +534,39 @@
     scheduleReconnect() {
       if (this.closed) return;
       this.clearTimers();
-      this.reconnectTimer = setTimeout(() => this.connect(), this.backoffMs);
+      this.reconnectTimer = this.setTimer(() => this.connect(), this.backoffMs);
       this.backoffMs = Math.min(this.backoffMs * 2, MAX_BACKOFF_MS);
     }
 
     clearTimers() {
-      clearTimeout(this.pingTimer);
-      clearTimeout(this.pongTimer);
-      clearTimeout(this.reconnectTimer);
+      this.clearTimer(this.pingTimer);
+      this.clearTimer(this.pongTimer);
+      this.clearTimer(this.reconnectTimer);
       this.pingTimer = this.pongTimer = this.reconnectTimer = null;
     }
 
-    // Keepalive: after activity_timeout with no traffic we ping; if nothing
-    // comes back in time the socket is considered dead and we reconnect.
+    // Keepalive: after a minute with no traffic we ping; if nothing comes
+    // back in time the socket is considered dead and we reconnect.
     armPing() {
-      clearTimeout(this.pingTimer);
-      clearTimeout(this.pongTimer);
-      this.pingTimer = setTimeout(() => {
-        this.send({ event: 'pusher:ping', data: {} });
-        this.pongTimer = setTimeout(() => {
+      this.clearTimer(this.pingTimer);
+      this.clearTimer(this.pongTimer);
+      this.pingTimer = this.setTimer(() => {
+        this.send({ event: 'relay:ping' });
+        this.pongTimer = this.setTimer(() => {
           if (this.ws) this.ws.close();
         }, PONG_TIMEOUT_MS);
-      }, this.activityTimeoutMs);
+      }, ACTIVITY_TIMEOUT_MS);
     }
 
     handleFrame(raw) {
+      if (this.closed) return;
       let frame;
       try {
         frame = JSON.parse(raw);
       } catch (_e) {
         return;
       }
+      if (!frame || typeof frame !== 'object') return;
       // Any traffic proves the connection is alive.
       this.armPing();
 
@@ -511,25 +581,14 @@
       }
 
       switch (name) {
-        case 'pusher:connection_established': {
-          const t = data && integer(data.activity_timeout);
-          if (t && t > 0) this.activityTimeoutMs = t * 1000;
-          this.armPing();
-          for (const channel of this.channels()) {
-            this.send({ event: 'pusher:subscribe', data: { channel } });
-          }
+        case 'relay:subscribed':
+          this.setSubscribed(true);
           return;
-        }
-        case 'pusher_internal:subscription_succeeded':
-          if (frame.channel === `chatrooms.${this.o.chatroomId}.v2`) this.setSubscribed(true);
+        case 'relay:unsubscribed':
+          this.setSubscribed(false);
           return;
-        case 'pusher:ping':
-          this.send({ event: 'pusher:pong', data: {} });
-          return;
-        case 'pusher:pong':
-          return;
-        case 'pusher:error':
-          // e.g. 4201 "Pong reply not received": let onclose drive reconnect.
+        case 'relay:ping':
+          this.send({ event: 'relay:pong' });
           return;
         case EV.message: {
           const msg = normalizeMessage(data);
@@ -537,8 +596,8 @@
           return;
         }
         default: {
-          if (typeof name !== 'string' || name.startsWith('pusher')) return;
-          const ev = normalizeEvent(name, data);
+          if (typeof name !== 'string' || name.startsWith('relay:')) return;
+          const ev = normalizeEvent(name, data, this.clock ? this.clock() : undefined);
           if (ev) this.o.onEvent(ev);
           else if (this.o.onUnknown) this.o.onUnknown(name, data);
         }
@@ -552,8 +611,8 @@
 
   // Kick's message text embeds emotes as "[emote:<id>:<name>]" rather than
   // sending markup; kick.com's own frontend parses the placeholders, so this
-  // page has to as well. Splits content into text and emote pieces for app.js
-  // to draw.
+  // page has to as well. Splits content into text and emote pieces, for
+  // core.js to turn into message parts (and app.js, to copy a message as text).
   //
   // With `combine`, a run of the same emote - back to back, or with nothing
   // but whitespace between - becomes one piece with a count, so
@@ -584,7 +643,7 @@
     EVENTS: EV,
     KickApi,
     KickApiError,
-    PusherRelay,
+    FeedRelay,
     normalizeMessage,
     normalizeEvent,
     buildPin,

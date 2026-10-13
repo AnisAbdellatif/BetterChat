@@ -1,0 +1,35 @@
+{
+  "description": "sub, resub, gifted subs (named and not), Kicks with and without a message, rewards, a host",
+  "steps": [
+    {
+      "join": true
+    },
+    {
+      "frame": "sub-new"
+    },
+    {
+      "frame": "sub-resub"
+    },
+    {
+      "frame": "gift-3"
+    },
+    {
+      "frame": "gift-7"
+    },
+    {
+      "frame": "kicks-basic"
+    },
+    {
+      "frame": "kicks-message"
+    },
+    {
+      "frame": "reward"
+    },
+    {
+      "frame": "reward-bare"
+    },
+    {
+      "frame": "host"
+    }
+  ]
+}

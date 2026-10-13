@@ -1,0 +1,17 @@
+{
+  "description": "a timeout runs out on its own and the user stops counting as banned; a permanent ban does not; an unban ends either",
+  "steps": [
+    {"join": true},
+    {"frame": "timeout-ann"},
+    {"frame": "ban-bob"},
+    {"call": "isBanned", "args": ["Ann"]},
+    {"call": "isBanned", "args": ["bob_42"]},
+    {"advance": 3599000},
+    {"call": "isBanned", "args": ["Ann"]},
+    {"advance": 1000},
+    {"call": "isBanned", "args": ["Ann"]},
+    {"call": "isBanned", "args": ["bob_42"]},
+    {"frame": "unban-bob"},
+    {"call": "isBanned", "args": ["bob_42"]}
+  ]
+}

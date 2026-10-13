@@ -1,0 +1,96 @@
+[
+  {
+    "frame": "message-spam-1"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r1",
+          "msgId": "m-spam-1",
+          "type": "message",
+          "username": "Ann",
+          "user": "ann",
+          "senderId": 1001,
+          "text": "Pog Pog",
+          "createdAt": "2026-09-08T18:00:11+00:00",
+          "color": "#FF9D00",
+          "kickColor": "#FF9D00",
+          "badges": [
+            {
+              "key": 0,
+              "kind": "subscriber",
+              "title": "Subscriber (8 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "Pog Pog"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      }
+    ]
+  },
+  {
+    "call": "dropRows",
+    "args": [
+      [
+        "r1"
+      ]
+    ]
+  },
+  {
+    "frame": "message-spam-2"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r2",
+          "msgId": "m-spam-2",
+          "type": "message",
+          "username": "Ann",
+          "user": "ann",
+          "senderId": 1001,
+          "text": "POG  pog",
+          "createdAt": "2026-09-08T18:00:12+00:00",
+          "color": "#FF9D00",
+          "kickColor": "#FF9D00",
+          "badges": [
+            {
+              "key": 0,
+              "kind": "subscriber",
+              "title": "Subscriber (8 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "POG  pog"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      }
+    ]
+  }
+]

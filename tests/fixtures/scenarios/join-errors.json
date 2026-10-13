@@ -1,0 +1,9 @@
+{
+  "description": "a channel Kick does not know, and the overlay (no status lines)",
+  "slug": "nobody-here",
+  "steps": [
+    {
+      "start": true
+    }
+  ]
+}

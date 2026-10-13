@@ -1,0 +1,1 @@
+{"event":"App\\Events\\ChatMessageEvent","data":"{\"id\":\"m-bob\",\"chatroom_id\":668,\"content\":\"hi all\",\"type\":\"message\",\"created_at\":\"2026-09-08T18:00:06+00:00\",\"sender\":{\"id\":1002,\"username\":\"bob_42\",\"slug\":\"bob-42\",\"identity\":{\"color\":\"#93EBFF\",\"badges\":[]}}}","channel":"chatrooms.668.v2"}

@@ -1,0 +1,24 @@
+{
+  "description": "a pin from history, a pinned event (duration in minutes), an unpin, and a pin running out",
+  "rest": {
+    "/channels/668/messages": "kick/history.json"
+  },
+  "logJoin": true,
+  "steps": [
+    {
+      "join": true
+    },
+    {
+      "frame": "pin-deleted"
+    },
+    {
+      "frame": "pin-created"
+    },
+    {
+      "advance": 1199000
+    },
+    {
+      "advance": 2000
+    }
+  ]
+}

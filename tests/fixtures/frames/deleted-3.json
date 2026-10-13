@@ -1,0 +1,1 @@
+{"event":"App\\Events\\MessageDeletedEvent","data":"{\"id\":\"del-3\",\"message\":{\"id\":\"m-mod-3\"},\"aiModerated\":false,\"violatedRules\":[]}","channel":"chatrooms.668.v2"}

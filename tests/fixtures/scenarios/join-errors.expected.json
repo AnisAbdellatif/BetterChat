@@ -1,0 +1,69 @@
+[
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "line",
+          "id": "r1",
+          "style": "system",
+          "error": false,
+          "icon": null,
+          "segs": [
+            {
+              "t": "text",
+              "text": "joining nobody-here..."
+            }
+          ]
+        }
+      },
+      {
+        "op": "status",
+        "status": {
+          "state": "connecting",
+          "text": "Connecting to Kick...",
+          "level": "warn",
+          "socket": false,
+          "subscribed": false,
+          "live": null,
+          "joined": false
+        }
+      }
+    ]
+  },
+  {
+    "fetch": "/channels/nobody-here"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "line",
+          "id": "r2",
+          "style": "system",
+          "error": true,
+          "icon": null,
+          "segs": [
+            {
+              "t": "text",
+              "text": "no such channel: nobody-here"
+            }
+          ]
+        }
+      },
+      {
+        "op": "status",
+        "status": {
+          "state": "failed",
+          "text": "",
+          "level": "",
+          "socket": false,
+          "subscribed": false,
+          "live": null,
+          "joined": false
+        }
+      }
+    ]
+  }
+]

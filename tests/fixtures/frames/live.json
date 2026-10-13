@@ -1,0 +1,1 @@
+{"event":"App\\Events\\StreamerIsLive","data":"{\"livestream\":{\"id\":99,\"channel_id\":668,\"session_title\":\"JUST CHATTING\",\"source\":null,\"created_at\":\"2026-09-08T18:01:00Z\"}}","channel":"channel.668"}

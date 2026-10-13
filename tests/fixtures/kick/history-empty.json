@@ -1,0 +1,12 @@
+{
+  "status": {
+    "error": false,
+    "code": 200,
+    "message": "SUCCESS"
+  },
+  "data": {
+    "messages": [],
+    "cursor": "1757354400000",
+    "pinned_message": null
+  }
+}

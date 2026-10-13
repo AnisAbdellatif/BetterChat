@@ -1,0 +1,1 @@
+{"event":"App\\Events\\ChatMessageEvent","data":"{\"id\":\"m-combo-3\",\"chatroom_id\":668,\"content\":\"[emote:37226:KEKW] [emote:37226:KEKW][emote:37226:KEKW]\",\"type\":\"message\",\"created_at\":\"2026-09-08T18:00:20+00:00\",\"sender\":{\"id\":1002,\"username\":\"bob_42\",\"slug\":\"bob-42\",\"identity\":{\"color\":\"#93EBFF\",\"badges\":[]}}}","channel":"chatrooms.668.v2"}

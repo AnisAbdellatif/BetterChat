@@ -5,13 +5,17 @@
     GET  /sw.js              the service worker, with the site's build hash written in
     GET  /api/build          that same hash, for the About tab to show
     POST /api/beat           heartbeat from an open chat tab
+    WS   /realtime           Kick's chat feed for one chatroom (relay.py)
     GET  /admin              the stats board (HTTP Basic Auth)
     GET  /admin/api/stats    the JSON the board polls (HTTP Basic Auth)
     GET  /health             liveness
 
 One process behind one hostname (betterchat.tech, through the host's Caddy
-and kamal-proxy): the chat itself runs in the browser (site/kick.js talks to Kick
-directly), so this server only hands out files and counts viewers.
+and kamal-proxy). The chat itself runs in the browser (site/kick.js asks Kick's
+REST API directly), except for the live feed: Kick's realtime server only
+takes connections from kick.com, so this server holds them and passes the
+frames on (betterchat/relay.py). Inside the KickPlus extension the page gets
+the feed from the extension instead, and never opens /realtime.
 
 Configuration is environment variables:
 
@@ -19,6 +23,8 @@ Configuration is environment variables:
     STATS_PATH                   JSON file for persisted stats (data/stats.json)
     SITE_DIR                     the static site (default: ./site next to this package)
     FRAME_ANCESTORS              CSP frame-ancestors for the site (unset: no header)
+    RELAY_MAX_FEEDS              chatrooms the relay holds at once (500)
+    RELAY_MAX_CLIENTS            viewers the relay serves at once (5000)
     HOST / PORT                  listen address for `betterchat` (0.0.0.0:8010)
 """
 
@@ -33,10 +39,11 @@ import secrets
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, WebSocket, status
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
+from .relay import CLIENT_PING_SEC, Relay, frame
 from .stats import VALID_BUILDS, VALID_EVENTS, VALID_SOURCES, Stats
 
 log = logging.getLogger("betterchat")
@@ -89,8 +96,12 @@ SW_BUILD_PLACEHOLDER = "'__BETTERCHAT_BUILD__'"
 basic_scheme = HTTPBasic(auto_error=False)
 
 
-def create_app(stats: Stats | None = None, sample_loop: bool = True) -> FastAPI:
+def create_app(stats: Stats | None = None, sample_loop: bool = True, relay: Relay | None = None) -> FastAPI:
     stats = stats or Stats(path=os.environ.get("STATS_PATH", "data/stats.json"))
+    relay = relay or Relay(
+        max_feeds=int(os.environ.get("RELAY_MAX_FEEDS", "500")),
+        max_clients=int(os.environ.get("RELAY_MAX_CLIENTS", "5000")),
+    )
 
     @contextlib.asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -102,10 +113,12 @@ def create_app(stats: Stats | None = None, sample_loop: bool = True) -> FastAPI:
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await task
+            await relay.aclose()
             stats.save()
 
     app = FastAPI(title="BetterChat", lifespan=lifespan, docs_url=None, redoc_url=None)
     app.state.stats = stats
+    app.state.relay = relay
 
     def admin_auth(
         credentials: Annotated[HTTPBasicCredentials | None, Depends(basic_scheme)],
@@ -193,7 +206,53 @@ def create_app(stats: Stats | None = None, sample_loop: bool = True) -> FastAPI:
 
     @app.get("/health")
     async def health() -> dict:
-        return {"status": "ok", "viewers": len(stats.sessions)}
+        return {"status": "ok", "viewers": len(stats.sessions), "relay": relay.snapshot()}
+
+    # ---------------------------------------------------------------- relay --
+
+    # Kick's chat feed for one chatroom, for a page that cannot reach Kick's
+    # realtime server itself - see relay.py for why, and for the frames.
+    @app.websocket("/realtime")
+    async def realtime(
+        ws: WebSocket,
+        chatroom: Annotated[int, Query(gt=0, lt=2**53)],
+        channel: Annotated[int | None, Query(gt=0, lt=2**53)] = None,
+    ) -> None:
+        await ws.accept()
+        joined = relay.join(chatroom, channel)
+        if joined is None:
+            # 1013: try again later. The page reconnects with backoff.
+            await ws.close(code=1013)
+            return
+        feed, queue = joined
+
+        async def send() -> None:
+            while True:
+                try:
+                    text = await asyncio.wait_for(queue.get(), CLIENT_PING_SEC)
+                except TimeoutError:
+                    text = frame("relay:ping")
+                if text is None:
+                    return
+                await ws.send_text(text)
+
+        async def receive() -> None:
+            # The page only ever pings; anything else is ignored.
+            async for text in ws.iter_text():
+                if '"relay:ping"' in text[:64]:
+                    with contextlib.suppress(asyncio.QueueFull):
+                        queue.put_nowait(frame("relay:pong"))
+
+        tasks = [asyncio.create_task(send()), asyncio.create_task(receive())]
+        try:
+            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for t in tasks:
+                t.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            relay.leave(feed, queue)
+            with contextlib.suppress(Exception):
+                await ws.close()
 
     # ----------------------------------------------------------------- site --
 

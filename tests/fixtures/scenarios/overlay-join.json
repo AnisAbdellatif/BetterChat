@@ -1,0 +1,19 @@
+{
+  "description": "overlay mode: no joining/connected lines, a screenful of history",
+  "overlay": true,
+  "logJoin": true,
+  "settings": {
+    "historyLimit": 5000
+  },
+  "rest": {
+    "/channels/668/messages": "kick/history.json"
+  },
+  "steps": [
+    {
+      "join": true
+    },
+    {
+      "frame": "live"
+    }
+  ]
+}

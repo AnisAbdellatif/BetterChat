@@ -1,0 +1,174 @@
+[
+  {
+    "frame": "message-rich"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r7",
+          "msgId": "m-rich",
+          "type": "message",
+          "username": "Ann",
+          "user": "ann",
+          "senderId": 1001,
+          "text": "hey @Bob_42 and @everyone [emote:37226:KEKW] look [emote:39261:kekBye]",
+          "createdAt": "2026-09-08T18:00:05+00:00",
+          "color": "#FF9D00",
+          "kickColor": "#FF9D00",
+          "badges": [
+            {
+              "key": 3,
+              "kind": "level",
+              "title": "Level 29",
+              "image": "https://ext.cdn.kick.com/chat/badges/29.png",
+              "svg": null,
+              "hidden": true
+            },
+            {
+              "key": 0,
+              "kind": "moderator",
+              "title": "Moderator",
+              "image": null,
+              "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 16 16\"><path d=\"M13.5 1.5L5.2 9.8l1 1L14.5 2.5z\" fill=\"#53fc18\"/><path d=\"M4.2 10.8l1-1 1 1-1 1z\" fill=\"#53fc18\"/><path d=\"M2 14l2.2-3.2 1 1L2 14z\" fill=\"#53fc18\"/><path d=\"M4.5 8.5l3 3-1.2 1.2-3-3z\" fill=\"#2cb80f\"/></svg>",
+              "hidden": false
+            },
+            {
+              "key": 1,
+              "kind": "subscriber",
+              "title": "Subscriber (8 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            },
+            {
+              "key": 4,
+              "kind": "event",
+              "title": "kick founder22",
+              "image": "https://ext.cdn.kick.com/chat/badges/founder.png",
+              "svg": null,
+              "hidden": false
+            },
+            {
+              "key": 2,
+              "kind": "sub_gifter",
+              "title": "Sub Gifter (60 gifts)",
+              "image": null,
+              "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 16 16\"><rect x=\"2\" y=\"6\" width=\"12\" height=\"8.5\" rx=\"1.5\" fill=\"#c85cff\"/><rect x=\"1\" y=\"3.5\" width=\"14\" height=\"3.5\" rx=\"1\" fill=\"#c85cff\"/><rect x=\"7\" y=\"3.5\" width=\"2\" height=\"11\" fill=\"#0b0e0f\"/><path d=\"M8 3.5C6 3.5 4.5 1 6.5 1 7.5 1 8 2.5 8 3.5zm0 0c2 0 3.5-2.5 1.5-2.5C8.5 1 8 2.5 8 3.5z\" fill=\"#c85cff\"/></svg>",
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "hey "
+            },
+            {
+              "t": "mention",
+              "name": "Bob_42",
+              "key": "bob_42",
+              "verified": true
+            },
+            {
+              "t": "text",
+              "text": " and "
+            },
+            {
+              "t": "mention",
+              "name": "everyone",
+              "key": "everyone",
+              "verified": false
+            },
+            {
+              "t": "text",
+              "text": " "
+            },
+            {
+              "t": "emote",
+              "id": "37226",
+              "name": "KEKW",
+              "url": "https://files.kick.com/emotes/37226/fullsize",
+              "count": 1
+            },
+            {
+              "t": "text",
+              "text": " look "
+            },
+            {
+              "t": "emote",
+              "id": "39261",
+              "name": "kekBye",
+              "url": "https://files.kick.com/emotes/39261/fullsize",
+              "count": 1
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      }
+    ]
+  },
+  {
+    "frame": "message-mentions-me"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r8",
+          "msgId": "m-me",
+          "type": "message",
+          "username": "dave",
+          "user": "dave",
+          "senderId": 1005,
+          "text": "ping @viewerMe and @Carol",
+          "createdAt": "2026-09-08T18:00:08+00:00",
+          "color": "#53fc18",
+          "kickColor": null,
+          "badges": [
+            {
+              "key": 0,
+              "kind": "other",
+              "title": "Mystery",
+              "image": null,
+              "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 16 16\"><circle cx=\"8\" cy=\"8\" r=\"6.5\" fill=\"#4a5058\"/></svg>",
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "ping "
+            },
+            {
+              "t": "mention",
+              "name": "viewerMe",
+              "key": "viewerme",
+              "verified": false
+            },
+            {
+              "t": "text",
+              "text": " and "
+            },
+            {
+              "t": "mention",
+              "name": "Carol",
+              "key": "carol",
+              "verified": false
+            }
+          ],
+          "reply": null,
+          "mentionsMe": true,
+          "repeats": 1,
+          "deleted": null
+        }
+      }
+    ]
+  }
+]

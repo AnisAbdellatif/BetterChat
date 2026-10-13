@@ -1,0 +1,23 @@
+{
+  "description": "rows the host drops itself (the overlay fade) are forgotten: a repeat of one starts a fresh row",
+  "overlay": true,
+  "steps": [
+    {
+      "join": true
+    },
+    {
+      "frame": "message-spam-1"
+    },
+    {
+      "call": "dropRows",
+      "args": [
+        [
+          "r1"
+        ]
+      ]
+    },
+    {
+      "frame": "message-spam-2"
+    }
+  ]
+}

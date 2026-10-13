@@ -1,0 +1,38 @@
+{
+  "id": 1001,
+  "user_id": 1001,
+  "username": "Ann",
+  "slug": "ann",
+  "profile_pic": "https://files.kick.com/images/user/1001/profile_image/conversion/a-thumb.webp",
+  "is_staff": false,
+  "is_channel_owner": false,
+  "is_moderator": false,
+  "badges": [
+    {
+      "type": "subscriber",
+      "text": "Subscriber",
+      "count": 8
+    },
+    {
+      "type": "og",
+      "text": "OG",
+      "count": null
+    }
+  ],
+  "following_since": "2024-05-06T07:08:09.000000Z",
+  "subscribed_for": 8,
+  "banned": null,
+  "created_at": "2023-01-02T03:04:05.000000Z",
+  "badges_v2": [
+    {
+      "badge_type": "global",
+      "image_url": "https://ext.cdn.kick.com/chat/badges/12.png",
+      "metadata": {
+        "level": 12
+      },
+      "name": "level",
+      "selected": true,
+      "sort_order": 1
+    }
+  ]
+}

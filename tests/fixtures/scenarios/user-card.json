@@ -1,0 +1,73 @@
+{
+  "description": "a user card from Kick (cached afterwards), one Kick has no record of, the session's history for a user newest first, and history sent live while a user is watched",
+  "rest": {
+    "/channels/xqc/users/Ann": "kick/user-ann.json",
+    "/channels/ann": "kick/channel-ann.json",
+    "/channels/668/messages": "kick/history.json"
+  },
+  "steps": [
+    {
+      "join": true
+    },
+    {
+      "call": "userCard",
+      "args": [
+        "Ann"
+      ]
+    },
+    {
+      "call": "cachedUserCard",
+      "args": [
+        "ann"
+      ]
+    },
+    {
+      "call": "userCard",
+      "args": [
+        "ghost"
+      ]
+    },
+    {
+      "call": "cachedUserCard",
+      "args": [
+        "ghost"
+      ]
+    },
+    {
+      "call": "userHistory",
+      "args": [
+        "ANN"
+      ]
+    },
+    {
+      "call": "watchUser",
+      "args": [
+        "ann"
+      ]
+    },
+    {
+      "frame": "message-rich"
+    },
+    {
+      "frame": "message-bob"
+    },
+    {
+      "call": "watchUser",
+      "args": [
+        null
+      ]
+    },
+    {
+      "frame": "message-spam-1"
+    },
+    {
+      "advance": 180000
+    },
+    {
+      "call": "cachedUserCard",
+      "args": [
+        "ann"
+      ]
+    }
+  ]
+}

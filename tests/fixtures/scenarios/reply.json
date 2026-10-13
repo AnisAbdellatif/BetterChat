@@ -1,0 +1,11 @@
+{
+  "description": "a reply: the parent message's author, id and parsed text",
+  "steps": [
+    {
+      "join": true
+    },
+    {
+      "frame": "message-reply"
+    }
+  ]
+}

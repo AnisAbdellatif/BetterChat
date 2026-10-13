@@ -1,0 +1,782 @@
+[
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "line",
+          "id": "r1",
+          "style": "system",
+          "error": false,
+          "icon": null,
+          "segs": [
+            {
+              "t": "text",
+              "text": "joining xqc..."
+            }
+          ]
+        }
+      },
+      {
+        "op": "status",
+        "status": {
+          "state": "connecting",
+          "text": "Connecting to Kick...",
+          "level": "warn",
+          "socket": false,
+          "subscribed": false,
+          "live": null,
+          "joined": false
+        }
+      }
+    ]
+  },
+  {
+    "fetch": "/channels/xqc"
+  },
+  {
+    "ops": [
+      {
+        "op": "channel",
+        "channel": {
+          "slug": "xqc",
+          "channelId": 668,
+          "chatroomId": 668,
+          "live": false
+        }
+      }
+    ]
+  },
+  {
+    "fetch": "/channels/668/messages"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r2",
+          "msgId": "b-1",
+          "type": "message",
+          "username": "Ann",
+          "user": "ann",
+          "senderId": 1001,
+          "text": "backfill 1",
+          "createdAt": "2026-09-08T17:50:11+00:00",
+          "color": "#FF9D00",
+          "kickColor": "#FF9D00",
+          "badges": [
+            {
+              "key": 0,
+              "kind": "subscriber",
+              "title": "Subscriber (8 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "backfill 1"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      },
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r3",
+          "msgId": "b-2",
+          "type": "message",
+          "username": "bob_42",
+          "user": "bob_42",
+          "senderId": 1002,
+          "text": "backfill 2",
+          "createdAt": "2026-09-08T17:50:12+00:00",
+          "color": "#93EBFF",
+          "kickColor": "#93EBFF",
+          "badges": [],
+          "parts": [
+            {
+              "t": "text",
+              "text": "backfill 2"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      },
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r4",
+          "msgId": "b-3",
+          "type": "message",
+          "username": "Ann",
+          "user": "ann",
+          "senderId": 1001,
+          "text": "backfill 3",
+          "createdAt": "2026-09-08T17:50:13+00:00",
+          "color": "#FF9D00",
+          "kickColor": "#FF9D00",
+          "badges": [
+            {
+              "key": 0,
+              "kind": "subscriber",
+              "title": "Subscriber (8 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "backfill 3"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      },
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r5",
+          "msgId": "b-4",
+          "type": "message",
+          "username": "bob_42",
+          "user": "bob_42",
+          "senderId": 1002,
+          "text": "backfill 4",
+          "createdAt": "2026-09-08T17:50:14+00:00",
+          "color": "#93EBFF",
+          "kickColor": "#93EBFF",
+          "badges": [],
+          "parts": [
+            {
+              "t": "text",
+              "text": "backfill 4"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      },
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r6",
+          "msgId": "b-5",
+          "type": "message",
+          "username": "Ann",
+          "user": "ann",
+          "senderId": 1001,
+          "text": "backfill 5",
+          "createdAt": "2026-09-08T17:50:15+00:00",
+          "color": "#FF9D00",
+          "kickColor": "#FF9D00",
+          "badges": [
+            {
+              "key": 0,
+              "kind": "subscriber",
+              "title": "Subscriber (8 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "backfill 5"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      },
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r7",
+          "msgId": "b-6",
+          "type": "message",
+          "username": "bob_42",
+          "user": "bob_42",
+          "senderId": 1002,
+          "text": "backfill 6",
+          "createdAt": "2026-09-08T17:50:16+00:00",
+          "color": "#93EBFF",
+          "kickColor": "#93EBFF",
+          "badges": [],
+          "parts": [
+            {
+              "t": "text",
+              "text": "backfill 6"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      },
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r8",
+          "msgId": "b-7",
+          "type": "message",
+          "username": "Ann",
+          "user": "ann",
+          "senderId": 1001,
+          "text": "backfill 7",
+          "createdAt": "2026-09-08T17:50:17+00:00",
+          "color": "#FF9D00",
+          "kickColor": "#FF9D00",
+          "badges": [
+            {
+              "key": 0,
+              "kind": "subscriber",
+              "title": "Subscriber (8 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "backfill 7"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      },
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r9",
+          "msgId": "b-8",
+          "type": "message",
+          "username": "bob_42",
+          "user": "bob_42",
+          "senderId": 1002,
+          "text": "backfill 8",
+          "createdAt": "2026-09-08T17:50:18+00:00",
+          "color": "#93EBFF",
+          "kickColor": "#93EBFF",
+          "badges": [],
+          "parts": [
+            {
+              "t": "text",
+              "text": "backfill 8"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      },
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r10",
+          "msgId": "b-9",
+          "type": "message",
+          "username": "Ann",
+          "user": "ann",
+          "senderId": 1001,
+          "text": "backfill 9",
+          "createdAt": "2026-09-08T17:50:19+00:00",
+          "color": "#FF9D00",
+          "kickColor": "#FF9D00",
+          "badges": [
+            {
+              "key": 0,
+              "kind": "subscriber",
+              "title": "Subscriber (8 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "backfill 9"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      },
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r11",
+          "msgId": "b-10",
+          "type": "message",
+          "username": "bob_42",
+          "user": "bob_42",
+          "senderId": 1002,
+          "text": "backfill 10",
+          "createdAt": "2026-09-08T17:51:10+00:00",
+          "color": "#93EBFF",
+          "kickColor": "#93EBFF",
+          "badges": [],
+          "parts": [
+            {
+              "t": "text",
+              "text": "backfill 10"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      },
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r12",
+          "msgId": "b-11",
+          "type": "message",
+          "username": "Ann",
+          "user": "ann",
+          "senderId": 1001,
+          "text": "backfill 11",
+          "createdAt": "2026-09-08T17:51:11+00:00",
+          "color": "#FF9D00",
+          "kickColor": "#FF9D00",
+          "badges": [
+            {
+              "key": 0,
+              "kind": "subscriber",
+              "title": "Subscriber (8 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "backfill 11"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      },
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r13",
+          "msgId": "b-12",
+          "type": "message",
+          "username": "bob_42",
+          "user": "bob_42",
+          "senderId": 1002,
+          "text": "backfill 12",
+          "createdAt": "2026-09-08T17:51:12+00:00",
+          "color": "#93EBFF",
+          "kickColor": "#93EBFF",
+          "badges": [],
+          "parts": [
+            {
+              "t": "text",
+              "text": "backfill 12"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      },
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r14",
+          "msgId": "b-13",
+          "type": "message",
+          "username": "Ann",
+          "user": "ann",
+          "senderId": 1001,
+          "text": "backfill 13",
+          "createdAt": "2026-09-08T17:51:13+00:00",
+          "color": "#FF9D00",
+          "kickColor": "#FF9D00",
+          "badges": [
+            {
+              "key": 0,
+              "kind": "subscriber",
+              "title": "Subscriber (8 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "backfill 13"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      },
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r15",
+          "msgId": "b-14",
+          "type": "message",
+          "username": "bob_42",
+          "user": "bob_42",
+          "senderId": 1002,
+          "text": "backfill 14",
+          "createdAt": "2026-09-08T17:51:14+00:00",
+          "color": "#93EBFF",
+          "kickColor": "#93EBFF",
+          "badges": [],
+          "parts": [
+            {
+              "t": "text",
+              "text": "backfill 14"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      },
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r16",
+          "msgId": "b-15",
+          "type": "message",
+          "username": "Ann",
+          "user": "ann",
+          "senderId": 1001,
+          "text": "backfill 15",
+          "createdAt": "2026-09-08T17:51:15+00:00",
+          "color": "#FF9D00",
+          "kickColor": "#FF9D00",
+          "badges": [
+            {
+              "key": 0,
+              "kind": "subscriber",
+              "title": "Subscriber (8 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "backfill 15"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      },
+      {
+        "op": "pin",
+        "pin": null
+      },
+      {
+        "op": "trim",
+        "keep": 10,
+        "ids": [
+          "r1",
+          "r2",
+          "r3",
+          "r4",
+          "r5",
+          "r6"
+        ]
+      }
+    ]
+  },
+  {
+    "ops": [
+      {
+        "op": "status",
+        "status": {
+          "state": "subscribing",
+          "text": "Waiting for Kick to confirm the chat subscription...",
+          "level": "warn",
+          "socket": true,
+          "subscribed": false,
+          "live": false,
+          "joined": false
+        }
+      }
+    ]
+  },
+  {
+    "frame": "connection-established"
+  },
+  {
+    "frame": "subscribed-chat"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "line",
+          "id": "r17",
+          "style": "system",
+          "error": false,
+          "icon": null,
+          "segs": [
+            {
+              "t": "text",
+              "text": "connected to xqc's chat"
+            }
+          ]
+        }
+      },
+      {
+        "op": "append",
+        "row": {
+          "kind": "line",
+          "id": "r18",
+          "style": "system",
+          "error": false,
+          "icon": null,
+          "segs": [
+            {
+              "t": "text",
+              "text": "xqc is not live right now - you'll still see chat"
+            }
+          ]
+        }
+      },
+      {
+        "op": "status",
+        "status": {
+          "state": "offline",
+          "text": "xqc is offline - chat still works",
+          "level": "offline",
+          "socket": true,
+          "subscribed": true,
+          "live": false,
+          "joined": true
+        }
+      },
+      {
+        "op": "trim",
+        "keep": 10,
+        "ids": [
+          "r7",
+          "r8"
+        ]
+      }
+    ]
+  },
+  {
+    "call": "setHeld",
+    "args": [
+      true
+    ]
+  },
+  {
+    "frame": "message-mod-1"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r19",
+          "msgId": "m-mod-1",
+          "type": "message",
+          "username": "Ann",
+          "user": "ann",
+          "senderId": 1001,
+          "text": "message 1",
+          "createdAt": "2026-09-08T18:00:31+00:00",
+          "color": "#FF9D00",
+          "kickColor": "#FF9D00",
+          "badges": [
+            {
+              "key": 0,
+              "kind": "subscriber",
+              "title": "Subscriber (8 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "message 1"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      }
+    ]
+  },
+  {
+    "frame": "message-mod-2"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r20",
+          "msgId": "m-mod-2",
+          "type": "message",
+          "username": "bob_42",
+          "user": "bob_42",
+          "senderId": 1002,
+          "text": "message 2",
+          "createdAt": "2026-09-08T18:00:32+00:00",
+          "color": "#93EBFF",
+          "kickColor": "#93EBFF",
+          "badges": [],
+          "parts": [
+            {
+              "t": "text",
+              "text": "message 2"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      }
+    ]
+  },
+  {
+    "frame": "message-mod-3"
+  },
+  {
+    "ops": [
+      {
+        "op": "append",
+        "row": {
+          "kind": "message",
+          "id": "r21",
+          "msgId": "m-mod-3",
+          "type": "message",
+          "username": "Ann",
+          "user": "ann",
+          "senderId": 1001,
+          "text": "message 3",
+          "createdAt": "2026-09-08T18:00:33+00:00",
+          "color": "#FF9D00",
+          "kickColor": "#FF9D00",
+          "badges": [
+            {
+              "key": 0,
+              "kind": "subscriber",
+              "title": "Subscriber (8 months)",
+              "image": "https://files.kick.com/channel_subscriber_badges/11/original",
+              "svg": null,
+              "hidden": false
+            }
+          ],
+          "parts": [
+            {
+              "t": "text",
+              "text": "message 3"
+            }
+          ],
+          "reply": null,
+          "mentionsMe": false,
+          "repeats": 1,
+          "deleted": null
+        }
+      }
+    ]
+  },
+  {
+    "call": "setHeld",
+    "args": [
+      false
+    ]
+  },
+  {
+    "call": "trim",
+    "args": []
+  },
+  {
+    "ops": [
+      {
+        "op": "trim",
+        "keep": 10,
+        "ids": [
+          "r9",
+          "r10",
+          "r11"
+        ]
+      }
+    ]
+  },
+  {
+    "settings": {
+      "scrollback": false
+    }
+  }
+]

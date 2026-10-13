@@ -1,0 +1,15 @@
+{
+  "description": "joining an offline channel: status, channel, history backfill (oldest first, malformed dropped), pin, connected lines",
+  "logJoin": true,
+  "rest": {
+    "/channels/668/messages": "kick/history.json"
+  },
+  "steps": [
+    {
+      "join": true
+    },
+    {
+      "frame": "history-duplicate"
+    }
+  ]
+}

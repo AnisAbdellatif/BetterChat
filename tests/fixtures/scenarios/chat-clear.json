@@ -1,0 +1,26 @@
+{
+  "description": "a moderator's clear marks every message and draws a line; a local clear empties the rows and forgets repeats",
+  "steps": [
+    {
+      "join": true
+    },
+    {
+      "frame": "message-mod-1"
+    },
+    {
+      "frame": "message-mod-2"
+    },
+    {
+      "frame": "chat-cleared"
+    },
+    {
+      "frame": "message-spam-1"
+    },
+    {
+      "call": "clearLocal"
+    },
+    {
+      "frame": "message-spam-2"
+    }
+  ]
+}
