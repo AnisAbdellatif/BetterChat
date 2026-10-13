@@ -162,25 +162,23 @@ def test_a_reader_that_falls_behind_is_cut_loose(monkeypatch):
     asyncio.run(scenario())
 
 
-def test_kick_upstream_speaks_centrifugo(monkeypatch):
+def test_kick_upstream_speaks_centrifugo():
     """KickUpstream against a stand-in Centrifugo: the connect with the token
     and Kick's Origin, the five subscriptions, pings answered, publications
-    passed on, a token refresh before expiry, and a disconnect push ending it."""
+    passed on, a token refresh before expiry, and a disconnect push ending it.
+    The protocol itself is kicksdk's; this checks the carrying."""
     from websockets.asyncio.server import serve
 
-    monkeypatch.setattr(relay_mod, "TOKEN_REFRESH_LEAD_SEC", 0)
     received: list[dict] = []
     origins: list[str | None] = []
 
     async def kick(ws):
         origins.append(ws.request.headers.get("Origin"))
-        hello = json.loads(await ws.recv())
-        received.append(hello)
-        # ttl 1: a refresh is due almost at once.
+        received.append(json.loads(await ws.recv()))
+        # ttl 1: kicksdk asks for a new token halfway through a short one.
         await ws.send(json.dumps({"id": 1, "connect": {"client": "c", "expires": True, "ttl": 1, "ping": 25}}))
-        subs = [json.loads(await ws.recv()) for _ in range(5)]
+        subs = [json.loads(line) for line in (await ws.recv()).split("\n")]
         received.extend(subs)
-        # Replies batched into one message, a line each, as Centrifugo does.
         await ws.send("\n".join(json.dumps({"id": s["id"], "subscribe": {}}) for s in subs))
         await ws.send("{}")
         assert await ws.recv() == "{}"
@@ -197,24 +195,26 @@ def test_kick_upstream_speaks_centrifugo(monkeypatch):
             port = server.sockets[0].getsockname()[1]
             up = KickUpstream()
             tokens = iter(["t1", "t2"])
+            asked: list[str] = []
 
-            async def fake_url(channel_id, client_id):
-                return f"ws://127.0.0.1:{port}/connection/websocket"
-
-            async def fake_token(client_id):
-                return next(tokens)
-
-            up._url = fake_url
-            up._token = fake_token
-            states, events = [], []
-            with pytest.raises(RuntimeError, match="disconnected"):
-                await asyncio.wait_for(
-                    up(5, 6, states.append, lambda c, e, d: events.append((c, e, d))), 5
+            async def fake_send(req):
+                asked.append(req.url)
+                if req.url.endswith("/auth/connection"):
+                    return 200, json.dumps({"data": {"token": next(tokens)}, "message": "success"})
+                url = f"ws://127.0.0.1:{port}/connection/websocket"
+                return 200, json.dumps(
+                    {"data": {"connections": [{"provider": "centrifugo", "credentials": {"url": url}}]}}
                 )
-            await up.aclose()
-            return states, events
 
-    states, events = asyncio.run(scenario())
+            up._send = fake_send
+            states, events = [], []
+            with pytest.raises(RuntimeError, match="3001"):
+                await asyncio.wait_for(up(5, 6, states.append, lambda c, e, d: events.append((c, e, d))), 5)
+            await up.aclose()
+            return states, events, asked
+
+    states, events, asked = asyncio.run(scenario())
+    assert asked[0].endswith("/channels/6/chat/connection")
     assert origins == ["https://kick.com"]
     assert received[0] == {"id": 1, "connect": {"token": "t1", "name": "js"}}
     assert [r["subscribe"]["channel"] for r in received[1:6]] == kick_channels(5, 6)

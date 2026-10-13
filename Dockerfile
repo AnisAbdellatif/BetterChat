@@ -6,7 +6,7 @@
 # (config/deploy.yml), which also checks /health before switching traffic.
 #
 # No apt-get anywhere: the uv base image already has Python, and every
-# dependency is a pure wheel.
+# dependency installs from a wheel (kicksdk-py's is prebuilt: no Rust here).
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy PYTHONUNBUFFERED=1
