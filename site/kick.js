@@ -4,14 +4,15 @@
 //   KickApi      - Kick's unofficial REST API (channel resolution, pinned
 //                  message + recent history, user cards), with a small TTL
 //                  cache. Kick answers cross-origin requests with CORS.
-//   PusherRelay  - one WebSocket to Kick's Pusher feed, subscribed to the
-//                  chatroom (chat) and channel (live/offline) channels,
-//                  with ping/pong keepalive and reconnect with backoff.
+//   FeedRelay    - one WebSocket to the chat feed: BetterChat's /realtime
+//                  relay (betterchat/relay.py), or the KickPlus extension
+//                  standing in for it. Ping/pong keepalive and reconnect
+//                  with backoff.
 //   normalize*   - turn Kick's raw payloads into the shapes core.js works on.
 //
 // Loaded as a classic <script>; also require()-able from Node for tests, and
 // evaluated as a plain script by the desktop app's embedded QuickJS, which has
-// no fetch, WebSocket or timers of its own. KickApi and PusherRelay take those
+// no fetch, WebSocket or timers of its own. KickApi and FeedRelay take those
 // as options for that reason, and only fall back to the browser's globals when
 // none are given - see core.js, which is what hands them over.
 (function (root, factory) {
@@ -156,7 +157,7 @@
     return { type: 'pin_created', message, duration_min: durationMin, expires_at: expiresAt, by };
   }
 
-  // Non-message Pusher events -> {type, ...} for core.js, or null to ignore.
+  // Non-message Kick events -> {type, ...} for core.js, or null to ignore.
   // `nowMs` only matters to a pin, whose expiry is counted from it.
   function normalizeEvent(name, data, nowMs) {
     data = data && typeof data === 'object' ? data : {};
@@ -405,19 +406,33 @@
   }
 
   // ---------------------------------------------------------------------
-  // Pusher relay (port of pusher_relay.ex)
+  // The chat feed
+  //
+  // Kick's realtime server only takes connections from kick.com, so this page
+  // cannot hold one itself. The relay does (betterchat/relay.py) and passes
+  // Kick's events on as they came, one JSON text frame each:
+  //
+  //   {event: 'relay:connected'}         the relay has this socket
+  //   {event: 'relay:subscribed'}        Kick confirmed the chat channel
+  //   {event: 'relay:unsubscribed'}      the relay lost Kick, and is back on it
+  //   {event: 'relay:ping' | 'relay:pong'}
+  //   {event, channel, data}             a Kick event; data usually a JSON string
+  //
+  // Inside the KickPlus extension the extension speaks the same frames from
+  // its own connection on kick.com, through a socket app.js hands over.
   // ---------------------------------------------------------------------
 
   const MAX_BACKOFF_MS = 30000;
   const PONG_TIMEOUT_MS = 30000;
+  // The relay pings every 25 s; a socket silent for this long gets asked.
+  const ACTIVITY_TIMEOUT_MS = 60000;
 
-  class PusherRelay {
+  class FeedRelay {
     /**
      * @param {object} opts
-     * @param {string} opts.appKey        Kick's public Pusher app key
-     * @param {string} opts.cluster       e.g. "us2"
-     * @param {number} opts.chatroomId    subscribes to chatrooms.<id>.v2
-     * @param {number} [opts.channelId]   also subscribes to channel.<id> (live/offline)
+     * @param {string} opts.url           the relay's address, e.g. wss://betterchat.tech/realtime
+     * @param {number} opts.chatroomId    the chat
+     * @param {number} [opts.channelId]   also the channel's own events (live/offline, Kicks)
      * @param {(msg) => void} opts.onMessage
      * @param {(ev) => void}  opts.onEvent
      * @param {(open: boolean) => void} [opts.onSocket]      socket opened / closed
@@ -446,28 +461,13 @@
       this.pingTimer = null;
       this.pongTimer = null;
       this.reconnectTimer = null;
-      this.activityTimeoutMs = 120000;
     }
 
     url() {
-      return `wss://ws-${this.o.cluster}.pusher.com/app/${this.o.appKey}?protocol=7&client=js&version=8.4.0&flash=false`;
-    }
-
-    // The four Kick's own page joins, and it does not put everything on one.
-    // Read off its bundle: chat, deletions, bans, subs and clears are on
-    // chatrooms.<id>.v2; gifted subs and reward redemptions on the underscore
-    // form chatroom_<id>; hosts on chatrooms.<id>; and Kicks on channel_<id>.
-    //
-    // Subscribing to .v2 alone is why gifted subs never arrived here: the
-    // handler was right and nothing was ever delivered to it.
-    channels() {
-      const list = [`chatrooms.${this.o.chatroomId}.v2`, `chatrooms.${this.o.chatroomId}`];
-      list.push(`chatroom_${this.o.chatroomId}`);
-      if (this.o.channelId) {
-        list.push(`channel.${this.o.channelId}`);
-        list.push(`channel_${this.o.channelId}`);
-      }
-      return list;
+      const base = String(this.o.url || '');
+      let url = `${base}${base.includes('?') ? '&' : '?'}chatroom=${encodeURIComponent(this.o.chatroomId)}`;
+      if (this.o.channelId) url += `&channel=${encodeURIComponent(this.o.channelId)}`;
+      return url;
     }
 
     connect() {
@@ -484,6 +484,7 @@
       this.ws = ws;
       ws.onopen = () => {
         this.backoffMs = 1000;
+        this.armPing();
         if (this.o.onSocket) this.o.onSocket(true);
       };
       ws.onmessage = (e) => this.handleFrame(e.data);
@@ -544,17 +545,17 @@
       this.pingTimer = this.pongTimer = this.reconnectTimer = null;
     }
 
-    // Keepalive: after activity_timeout with no traffic we ping; if nothing
-    // comes back in time the socket is considered dead and we reconnect.
+    // Keepalive: after a minute with no traffic we ping; if nothing comes
+    // back in time the socket is considered dead and we reconnect.
     armPing() {
       this.clearTimer(this.pingTimer);
       this.clearTimer(this.pongTimer);
       this.pingTimer = this.setTimer(() => {
-        this.send({ event: 'pusher:ping', data: {} });
+        this.send({ event: 'relay:ping' });
         this.pongTimer = this.setTimer(() => {
           if (this.ws) this.ws.close();
         }, PONG_TIMEOUT_MS);
-      }, this.activityTimeoutMs);
+      }, ACTIVITY_TIMEOUT_MS);
     }
 
     handleFrame(raw) {
@@ -565,6 +566,7 @@
       } catch (_e) {
         return;
       }
+      if (!frame || typeof frame !== 'object') return;
       // Any traffic proves the connection is alive.
       this.armPing();
 
@@ -579,25 +581,14 @@
       }
 
       switch (name) {
-        case 'pusher:connection_established': {
-          const t = data && integer(data.activity_timeout);
-          if (t && t > 0) this.activityTimeoutMs = t * 1000;
-          this.armPing();
-          for (const channel of this.channels()) {
-            this.send({ event: 'pusher:subscribe', data: { channel } });
-          }
+        case 'relay:subscribed':
+          this.setSubscribed(true);
           return;
-        }
-        case 'pusher_internal:subscription_succeeded':
-          if (frame.channel === `chatrooms.${this.o.chatroomId}.v2`) this.setSubscribed(true);
+        case 'relay:unsubscribed':
+          this.setSubscribed(false);
           return;
-        case 'pusher:ping':
-          this.send({ event: 'pusher:pong', data: {} });
-          return;
-        case 'pusher:pong':
-          return;
-        case 'pusher:error':
-          // e.g. 4201 "Pong reply not received": let onclose drive reconnect.
+        case 'relay:ping':
+          this.send({ event: 'relay:pong' });
           return;
         case EV.message: {
           const msg = normalizeMessage(data);
@@ -605,7 +596,7 @@
           return;
         }
         default: {
-          if (typeof name !== 'string' || name.startsWith('pusher')) return;
+          if (typeof name !== 'string' || name.startsWith('relay:')) return;
           const ev = normalizeEvent(name, data, this.clock ? this.clock() : undefined);
           if (ev) this.o.onEvent(ev);
           else if (this.o.onUnknown) this.o.onUnknown(name, data);
@@ -652,7 +643,7 @@
     EVENTS: EV,
     KickApi,
     KickApiError,
-    PusherRelay,
+    FeedRelay,
     normalizeMessage,
     normalizeEvent,
     buildPin,

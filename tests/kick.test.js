@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeMessage, normalizeEvent, buildPin, parseContent, KickApi, PusherRelay, EVENTS } = require('../site/kick.js');
+const { normalizeMessage, normalizeEvent, buildPin, parseContent, KickApi, FeedRelay, EVENTS } = require('../site/kick.js');
 
 // Payloads captured live from chatrooms.668.v2 on 2026-09-08.
 const reply = {
@@ -201,32 +201,21 @@ test('KickApi.userCard: merges both endpoints and survives a missing second one'
   assert.equal(ghost.followers_count, null);
 });
 
-test('PusherRelay: handshake subscribes to both channels and routes frames', () => {
+test('FeedRelay: asks the relay for the chat and routes its frames', () => {
   const sent = [];
   const messages = [];
   const events = [];
   const subscribed = [];
-  const relay = new PusherRelay({
-    appKey: 'k', cluster: 'us2', chatroomId: 668, channelId: 999,
+  const relay = new FeedRelay({
+    url: 'wss://relay.test/realtime', chatroomId: 668, channelId: 999,
     onMessage: (m) => messages.push(m), onEvent: (e) => events.push(e), onSubscribed: (ok) => subscribed.push(ok),
   });
+  assert.equal(relay.url(), 'wss://relay.test/realtime?chatroom=668&channel=999');
   relay.ws = { readyState: 1, send: (s) => sent.push(JSON.parse(s)) };
 
-  relay.handleFrame(JSON.stringify({ event: 'pusher:connection_established', data: JSON.stringify({ socket_id: '1.2', activity_timeout: 120 }) }));
-  // The five Kick's own page joins: chat on .v2, hosts on the dotted form,
-  // gifted subs and rewards on chatroom_<id>, Kicks on channel_<id>.
-  assert.deepEqual(sent.map((f) => f.data.channel), [
-    'chatrooms.668.v2',
-    'chatrooms.668',
-    'chatroom_668',
-    'channel.999',
-    'channel_999',
-  ]);
-  assert.equal(relay.activityTimeoutMs, 120000);
-
-  relay.handleFrame(JSON.stringify({ event: 'pusher_internal:subscription_succeeded', channel: 'channel.999', data: '{}' }));
-  assert.deepEqual(subscribed, [], 'only the chatroom subscription counts');
-  relay.handleFrame(JSON.stringify({ event: 'pusher_internal:subscription_succeeded', channel: 'chatrooms.668.v2', data: '{}' }));
+  relay.handleFrame(JSON.stringify({ event: 'relay:connected' }));
+  assert.deepEqual(subscribed, []);
+  relay.handleFrame(JSON.stringify({ event: 'relay:subscribed' }));
   assert.deepEqual(subscribed, [true]);
 
   relay.handleFrame(JSON.stringify({ event: EVENTS.message, channel: 'chatrooms.668.v2', data: JSON.stringify(reply) }));
@@ -236,11 +225,24 @@ test('PusherRelay: handshake subscribes to both channels and routes frames', () 
   relay.handleFrame(JSON.stringify({ event: EVENTS.banned, data: JSON.stringify(banned) }));
   assert.equal(events[0].type, 'user_banned');
 
-  relay.handleFrame(JSON.stringify({ event: 'pusher:ping', data: {} }));
-  assert.equal(sent[sent.length - 1].event, 'pusher:pong');
+  relay.handleFrame(JSON.stringify({ event: 'relay:ping' }));
+  assert.deepEqual(sent[sent.length - 1], { event: 'relay:pong' });
 
+  // Kick lost and found again behind the relay: the socket stays up.
+  relay.handleFrame(JSON.stringify({ event: 'relay:unsubscribed' }));
+  relay.handleFrame(JSON.stringify({ event: 'relay:subscribed' }));
+  assert.deepEqual(subscribed, [true, false, true]);
+
+  relay.handleFrame(JSON.stringify({ event: 'relay:something-new' }));
   relay.handleFrame('not json at all');
+  relay.handleFrame('null');
+  assert.equal(events.length, 1);
   relay.clearTimers();
+});
+
+test('FeedRelay: without a channel id, only the chatroom is asked for', () => {
+  const relay = new FeedRelay({ url: 'wss://relay.test/realtime?x=1', chatroomId: 5, onMessage() {}, onEvent() {} });
+  assert.equal(relay.url(), 'wss://relay.test/realtime?x=1&chatroom=5');
 });
 
 test('KickApi.verifyUser: real name, unknown name, and both answers cached', async () => {

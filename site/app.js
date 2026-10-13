@@ -18,10 +18,13 @@ BetterChatSettings.ready.then(function () {
     return decodeURIComponent(fromPath || query.get('c') || location.hash.replace(/^#/, '') || '').trim();
   })();
 
-  // Kick's public Pusher key and API base (config.js), the same values
-  // kick.com ships to every browser. The chat session (core.js) is what uses
-  // them; this file draws what it sends.
-  const CONFIG = window.BETTERCHAT_CONFIG || {};
+  // Kick's API base and the chat feed's address (config.js). The chat
+  // session (core.js) is what uses them; this file draws what it sends. The
+  // feed is this origin's own /realtime relay unless config.js names another.
+  const CONFIG = Object.assign({}, window.BETTERCHAT_CONFIG);
+  if (!CONFIG.realtimeUrl) {
+    CONFIG.realtimeUrl = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/realtime`;
+  }
 
   // OBS overlay mode (?overlay=1): transparent, no controls, fading messages.
   const overlayMode = ['1', 'true', 'on'].includes((query.get('overlay') || '').toLowerCase());
@@ -1749,7 +1752,7 @@ BetterChatSettings.ready.then(function () {
 
   async function initModeration() {
     if (overlayMode || window.parent === window) return;
-    const reply = await askParent({ type: 'hello' });
+    const reply = await parentHello;
     // The extension asks Kick outright - /channels/<slug>/me carries
     // is_moderator, is_broadcaster and is_super_admin - so this is whether
     // this account can moderate this channel, not merely whether it is signed
@@ -2483,9 +2486,142 @@ BetterChatSettings.ready.then(function () {
   }
 
   // ---------------------------------------------------------------------
+  // The chat feed's socket
+  //
+  // Kick's realtime server only takes connections from kick.com. Opened on
+  // its own, this page reads the feed through this origin's /realtime relay.
+  // Inside KickPlus the page framing it is kick.com, and the extension holds
+  // that connection itself and speaks the relay's frames over postMessage -
+  // so the chat does not go through betterchat.tech at all there. Which one
+  // is decided by the extension's answer to the handshake, which says `feed`
+  // when it can; an older extension does not, and gets the relay.
+  // ---------------------------------------------------------------------
+
+  const FEED_CHANNEL = 'bck-feed';
+
+  // Asked once, for the moderation controls and the feed both. Framed by a
+  // page that is plainly not kick.com, nobody will answer, and the feed is
+  // not held up for the ten seconds it would take to give up.
+  const parentHello = (() => {
+    if (overlayMode || window.parent === window) return Promise.resolve(null);
+    const ancestors = location.ancestorOrigins;
+    if (ancestors && ancestors.length && ancestors[0] !== MOD_PARENT_ORIGIN) return Promise.resolve(null);
+    return askParent({ type: 'hello' });
+  })();
+
+  const parentFeeds = new Map(); // sid -> ParentFeedSocket
+  let parentFeedCount = 0;
+
+  window.addEventListener('message', (e) => {
+    if (e.origin !== MOD_PARENT_ORIGIN || e.source !== window.parent) return;
+    const msg = e.data;
+    if (!msg || msg.channel !== FEED_CHANNEL || typeof msg.sid !== 'string') return;
+    const socket = parentFeeds.get(msg.sid);
+    if (socket) socket.receive(msg);
+  });
+
+  // The extension's side of a feed, shaped like the WebSocket core.js expects.
+  class ParentFeedSocket {
+    constructor(url) {
+      this.readyState = 0;
+      this.sid = `f${++parentFeedCount}`;
+      parentFeeds.set(this.sid, this);
+      const query = new URL(url, location.href).searchParams;
+      this.post({
+        type: 'open',
+        chatroomId: Number(query.get('chatroom')) || null,
+        channelId: Number(query.get('channel')) || null,
+      });
+    }
+
+    post(payload) {
+      window.parent.postMessage({ channel: FEED_CHANNEL, sid: this.sid, ...payload }, MOD_PARENT_ORIGIN);
+    }
+
+    receive(msg) {
+      if (this.readyState === 3) return;
+      if (msg.type === 'frame' && typeof msg.data === 'string') {
+        if (this.readyState === 0) {
+          this.readyState = 1;
+          if (this.onopen) this.onopen({});
+        }
+        if (this.onmessage) this.onmessage({ data: msg.data });
+      } else if (msg.type === 'closed') {
+        this.finish();
+      }
+    }
+
+    send(text) {
+      if (this.readyState === 1) this.post({ type: 'send', data: String(text) });
+    }
+
+    close() {
+      if (this.readyState === 3) return;
+      this.post({ type: 'close' });
+      this.finish();
+    }
+
+    finish() {
+      this.readyState = 3;
+      parentFeeds.delete(this.sid);
+      if (this.onclose) this.onclose({ code: 1000 });
+    }
+  }
+
+  // What core.js is handed: a socket that becomes the extension's or the
+  // relay's once the handshake has said which.
+  class FeedSocket {
+    constructor(url) {
+      this.readyState = 0;
+      this.inner = null;
+      parentHello.then((reply) => {
+        if (this.closing) return;
+        const Inner = reply && reply.feed ? ParentFeedSocket : WebSocket;
+        let inner;
+        try {
+          inner = new Inner(url);
+        } catch (_e) {
+          this.finish();
+          return;
+        }
+        this.inner = inner;
+        inner.onopen = (e) => {
+          this.readyState = 1;
+          if (this.onopen) this.onopen(e);
+        };
+        inner.onmessage = (e) => {
+          if (this.onmessage) this.onmessage(e);
+        };
+        inner.onerror = (e) => {
+          if (this.onerror) this.onerror(e);
+        };
+        inner.onclose = () => this.finish();
+      });
+    }
+
+    send(text) {
+      if (this.inner && this.readyState === 1) this.inner.send(text);
+    }
+
+    close() {
+      if (this.closing) return;
+      this.closing = true;
+      if (this.inner) this.inner.close();
+      else setTimeout(() => this.finish(), 0);
+    }
+
+    finish() {
+      if (this.readyState === 3) return;
+      this.closing = true;
+      this.readyState = 3;
+      if (this.onclose) this.onclose({ code: 1000 });
+    }
+  }
+
+  // ---------------------------------------------------------------------
   // The chat session (core.js): joining the channel, Kick's feed, and every
-  // decision about what is shown. This page hands it the browser's own fetch,
-  // WebSocket and timers, and draws what it sends.
+  // decision about what is shown. This page hands it the browser's own fetch
+  // and timers and the feed socket above, and draws what it sends.
   // ---------------------------------------------------------------------
 
   const session = BetterChatCore.createChatSession({
@@ -2495,7 +2631,7 @@ BetterChatSettings.ready.then(function () {
     config: CONFIG,
     host: {
       fetch: (url, init) => fetch(url, init),
-      WebSocket,
+      WebSocket: FeedSocket,
       setTimeout: (fn, ms) => setTimeout(fn, ms),
       clearTimeout: (id) => clearTimeout(id),
       now: () => Date.now(),

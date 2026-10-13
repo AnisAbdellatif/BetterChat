@@ -33,7 +33,7 @@ it is `require()`-able, otherwise it sets a global on the global object.
 | File | Global | What it is |
 | --- | --- | --- |
 | `site/settings.js` | `BetterChatSettings` | the settings model: which settings exist, `sanitize` |
-| `site/kick.js` | `BetterChatKick` | Kick's REST API, the Pusher relay, payload normalizers |
+| `site/kick.js` | `BetterChatKick` | Kick's REST API, the chat feed (`FeedRelay`), payload normalizers |
 | `site/core.js` | `BetterChatCore` | the session described here |
 
 None of them uses a module loader, `window`, `document`, `localStorage`,
@@ -62,7 +62,7 @@ session.start();
 | `settings` | object | yes | a settings object returned by `BetterChatSettings.sanitize` (see [Settings](#settings)) |
 | `host` | object | yes | `{ fetch, WebSocket, setTimeout, clearTimeout, now }`, see [The host](#the-host) |
 | `onOps` | `(ops: Op[]) => void` | yes | receives every batch of operations |
-| `config` | object | no | `{ kickApiBase, pusherAppKey, pusherCluster }` - the values in `site/config.js`. `kickApiBase` defaults to `https://kick.com/api/v2`; the Pusher key and cluster have no default and are needed to connect. |
+| `config` | object | no | `{ kickApiBase, realtimeUrl }` - the values in `site/config.js`. `kickApiBase` defaults to `https://kick.com/api/v2`. `realtimeUrl` is the chat feed, a BetterChat `/realtime` relay such as `wss://betterchat.tech/realtime` (see `betterchat/relay.py` for its frames); it has no default and is needed to connect. The web page fills it in with its own origin's. |
 | `overlay` | boolean | no | OBS overlay mode: no joining / connected / live / connection-lost lines, and the history size is fixed at 100 rows |
 | `onUnknown` | `(eventName, data) => void` | no | called for Kick events the core does not recognise (debugging only) |
 | `onError` | `(error) => void` | no | receives anything `onOps` throws (see [Batches](#batches)) |

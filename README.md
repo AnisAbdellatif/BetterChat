@@ -1,13 +1,18 @@
 # BetterChat
 
 A customizable viewer for any Kick channel's chat. Open `/<channel>` (for
-example `/xqc`) and the page talks to Kick directly from the browser: it
-resolves the channel over Kick's REST API and subscribes to Kick's Pusher
-feed itself. A small Python server (FastAPI, run with uv) hands out the
-page and carries an admin board. One process, one hostname, published from
-a VPS with Kamal (see "Deploying").
+example `/xqc`) and the page talks to Kick's REST API directly from the
+browser to resolve the channel and load its history. The live feed comes
+through this server: Kick's realtime server (Centrifugo) only takes
+connections from kick.com, so a small relay holds them and passes the frames
+on (`betterchat/relay.py`). Inside the KickPlus extension the extension holds
+that connection from the kick.com tab instead, and nothing goes through the
+relay. The same Python server (FastAPI, run with uv) hands out the page and
+carries an admin board. One process, one hostname, published from a VPS with
+Kamal (see "Deploying").
 
-**The page sends nothing back unless the viewer agrees to it.** The
+**The page sends nothing back unless the viewer agrees to it** - beyond
+asking the relay for the chat it shows, when opened on its own. The
 heartbeats that feed the board's viewer counts are opt-in: the first visit
 asks, in as many words, and until it is answered nothing is sent. Either
 answer is remembered with the other settings and can be changed later under
@@ -16,10 +21,11 @@ it, so consent cannot be handed to anyone else - it is given in the viewer's
 own browser or not at all.
 
 This is the successor of the Elixir/Phoenix version (the `betterchat`
-repo), which relayed chat through a server. Kick's API answers cross-origin
-browser requests and its Pusher feed accepts any origin, so the relay had
-nothing left to do; the frontend is the same, and what the relay did now
-lives in `site/kick.js`.
+repo), which relayed chat through a server. While Kick's feed was Pusher,
+which accepted any origin, the relay had nothing to do and the page held the
+connection itself. Kick's move to Centrifugo (October 2026), which checks the
+Origin, brought a relay back - a much smaller one, which only passes Kick's
+frames on; everything else stays in `site/kick.js`.
 
 The chat itself - everything decided about a message before it is drawn -
 lives in `site/core.js`, which has no page around it at all. The web page draws
@@ -154,15 +160,24 @@ per-channel table. HTTP Basic Auth; a 404 until credentials are set.
 ## How it works
 
 ```
- Kick REST API  <-- fetch --  browser  -- WebSocket -->  Kick's Pusher
- (channel, pin,              (kick.js +                 (chatrooms.<id>.v2,
-  history, user)              core.js +                  channel.<id>)
+ Kick REST API  <-- fetch --  browser
+ (channel, pin,              (kick.js +
+  history, user)              core.js +
                               app.js)
                                  |
               GET /<channel>     |     POST /api/beat  (only if opted in)
-                                 v
+              WS  /realtime      v
                         betterchat server (uv)  -->  GET /admin
+                                 |
+                                 |  WebSocket, Origin: kick.com
+                                 v
+                        Kick's Centrifugo  (chatrooms.<id>.v2, chatrooms.<id>,
+                                            chatroom_<id>, channel.<id>, channel_<id>)
 ```
+
+In KickPlus, the browser's `WS /realtime` is replaced by the extension: it
+holds the Centrifugo connection from the kick.com tab and speaks the relay's
+frames to the page over `postMessage` (`bck-feed`).
 
 Inside the page the work is split in two. `core.js` is the chat: given Kick's
 traffic it decides what is shown, and says so as plain JSON operations (append
@@ -181,10 +196,11 @@ the KickPlus extension's moderation and replies.
 - `site/kick.js` - the former backend, in the browser:
   - `KickApi`: channel resolution (ids, subscriber badge tiers, live flag),
     pinned message + last messages, user cards; small in-memory TTL cache.
-  - `PusherRelay`: one WebSocket to Kick's Pusher feed, subscribed to the
-    chatroom channel (chat) and the channel channel (live / offline), with
-    ping/pong keepalive from Kick's `activity_timeout` and reconnect with
-    exponential backoff.
+  - `FeedRelay`: one WebSocket to the chat feed - the `/realtime` relay, or
+    the KickPlus extension in its place - with ping/pong keepalive and
+    reconnect with exponential backoff. The frames are Kick's own envelope
+    (`{event, channel, data}`) plus `relay:connected`, `relay:subscribed`,
+    `relay:unsubscribed` and `relay:ping` / `relay:pong`.
   - `normalizeMessage` / `normalizeEvent`: Kick's raw payloads into the
     shapes `core.js` works on. `normalizeMessage` keeps `sender_id` because a
     reply has to name the parent's sender to Kick, and this is the only place
@@ -228,8 +244,13 @@ the KickPlus extension's moderation and replies.
   sends, and owns everything that is only the page's - scrolling and the jump
   pill, the settings panel, user card and reply tooltip layout, overlay fades,
   the consent banner and heartbeats, and the bridge to the KickPlus extension
-  for moderating and replying. `site/config.js` - Kick's public Pusher app
-  key and cluster (the same values kick.com ships to every browser).
+  for moderating, replying and the chat feed. `site/config.js` - Kick's API
+  base and the feed's address (this origin's `/realtime` when left null).
+- `betterchat/relay.py` - the chat relay: one Centrifugo connection per
+  chatroom, opened with Kick's guest token and `Origin: https://kick.com`,
+  shared by every viewer of it and kept 30 s after the last one leaves.
+  Tokens are refreshed before they expire (45 min). Capped by
+  `RELAY_MAX_FEEDS` and `RELAY_MAX_CLIENTS`; `/health` reports both counts.
 - `betterchat/main.py` - serves `site/` (every unknown path is the chat
   page, real files as-is), takes heartbeats, serves the board, and answers
   `/privacy` with `site/privacy.html`. That route is registered before the
@@ -239,8 +260,7 @@ the KickPlus extension's moderation and replies.
   a 24h series and joins per hour, persisted to a JSON file every minute
   and on shutdown.
 
-Every viewer holds their own connection to Kick, exactly like a kick.com tab
-does. Heartbeats are anonymous and opt-in: a random per-tab id, the channel
+Heartbeats are anonymous and opt-in: a random per-tab id, the channel
 slug, a message count, and whether the page is embedded. No IP is stored with
 them. "Viewers" means open tabs,
 not people; a tab that dies
@@ -251,11 +271,10 @@ the channel's real rate instead of multiplying it by the viewer count.
 ## Surviving an outage
 
 `site/sw.js` caches the shell and the scripts, so the page loads even when
-this server doesn't answer. That is worth more here than for most sites:
-the chat is entirely client-side, so a cached load is a fully working one -
-`kick.js` reaches kick.com directly for the API and the Pusher feed, and
-with the heartbeats gone the page asks this origin for nothing at all once
-it has loaded.
+this server doesn't answer. `kick.js` reaches kick.com directly for the API,
+so history still loads; the live feed waits for the relay, and the page
+reconnects on its own when it is back. Inside KickPlus the feed comes from
+the extension, so there a cached load is a fully working one.
 
 Navigations are network-first, so a deploy is picked up straight away and
 the cached shell is only used when the origin can't be reached. Scripts are
@@ -305,7 +324,7 @@ npm run check        # syntax-checks every script under site/
 ```
 
 The core's tests replay Kick traffic - REST answers in `tests/fixtures/kick/`,
-Pusher frames in `tests/fixtures/frames/` exactly as Pusher sends them - through
+relay frames in `tests/fixtures/frames/` exactly as the relay sends them - through
 the scenarios in `tests/fixtures/scenarios/`, and compare everything the core
 emits with the `.expected.json` beside each. Those files are the protocol the
 desktop app is built against, so a change to one is a change to what it
@@ -319,6 +338,8 @@ and the diff is worth reading before it is committed.
 | `SITE_DIR` | The static site (default: `site/` in the repo). |
 | `FRAME_ANCESTORS` | CSP `frame-ancestors` for the site, e.g. `'self' https://kick.com`. Unset sends no header. |
 | `BEAT_ORIGINS` | Origins allowed to post heartbeats cross-origin, e.g. `https://dev.betterchat.tech`. Unset means same-origin only. |
+| `RELAY_MAX_FEEDS` | Chatrooms the `/realtime` relay holds connections to at once (default 500). |
+| `RELAY_MAX_CLIENTS` | Viewers the relay serves at once (default 5000). Past either cap a new socket is closed with 1013 and the page retries. |
 | `HOST`, `PORT` | Listen address (default `0.0.0.0:8010`). |
 
 ## Embedding it in kick.com
@@ -503,7 +524,7 @@ extension on purpose, so there is no setting for it.
 
 ## Things to know
 
-- Kick's REST API and Pusher feed are unofficial. If Kick ever restricts
+- Kick's REST API and realtime feed are unofficial. If Kick ever restricts
   cross-origin access, `KickApi` takes a `baseUrl`, so the calls can be
   pointed at a small proxy without touching the rest.
 - Ban, reply and pinned-message payload shapes were captured live; deletion,

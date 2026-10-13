@@ -4,8 +4,9 @@
 //
 // Each scenario in tests/fixtures/scenarios/<name>.json drives a chat session
 // with a fake host - fetch answered from tests/fixtures/kick/, a fake
-// WebSocket fed the Pusher frames in tests/fixtures/frames/ exactly as Pusher
-// sends them (`data` is a JSON string), and a clock and timers that only move
+// WebSocket fed the relay frames in tests/fixtures/frames/ exactly as the
+// relay sends them (Kick's envelope, `data` a JSON string), and a clock and
+// timers that only move
 // when a step says so. Everything the session does is logged in order - the
 // operations it emits, the requests it makes, and markers for each step - and
 // compared with <name>.expected.json beside it.
@@ -16,7 +17,7 @@
 // diff before committing it.
 //
 // Steps:
-//   {"join": true}           start, open the socket, Pusher's handshake and the
+//   {"join": true}           start, open the socket, the relay's greeting and the
 //                            chat subscription; unless the scenario sets
 //                            "logJoin", the log starts after it
 //   {"start": true}          session.start() on its own
@@ -74,8 +75,8 @@ function fakeHost(rest, log) {
     send(text) {
       const frame = JSON.parse(text);
       this.sent.push(frame);
-      if (frame.event === 'pusher:ping') {
-        Promise.resolve().then(() => this.onmessage({ data: JSON.stringify({ event: 'pusher:pong', data: '{}' }) }));
+      if (frame.event === 'relay:ping') {
+        Promise.resolve().then(() => this.onmessage({ data: JSON.stringify({ event: 'relay:pong' }) }));
       }
     }
 
@@ -142,7 +143,7 @@ async function runScenario(scenario) {
     settings,
     host,
     overlay: scenario.overlay === true,
-    config: { pusherAppKey: 'app-key', pusherCluster: 'us2' },
+    config: { realtimeUrl: 'wss://relay.test/realtime' },
     // A copy: what is logged is what was sent, not what it became later.
     onOps: (ops) => log.push({ ops: JSON.parse(JSON.stringify(ops)) }),
   });
@@ -282,7 +283,7 @@ test('core: runs as plain scripts in a context with no browser and no Intl', asy
   vm.runInContext(
     `globalThis.session = BetterChatCore.createChatSession({
       slug: 'xqc', settings: BetterChatSettings.sanitize({}), host, onOps: record,
-      config: { pusherAppKey: 'app-key', pusherCluster: 'us2' },
+      config: { realtimeUrl: 'wss://relay.test/realtime' },
     });
     session.start();`,
     context
@@ -322,7 +323,7 @@ async function joined(options = {}) {
     slug: 'xqc',
     settings: Settings.sanitize({}),
     host: fake.host,
-    config: { pusherAppKey: 'app-key', pusherCluster: 'us2' },
+    config: { realtimeUrl: 'wss://relay.test/realtime' },
     onOps: options.onOps || ((batch) => ops.push(...JSON.parse(JSON.stringify(batch)))),
     onError: options.onError,
   });
@@ -356,7 +357,7 @@ test('core: nothing is emitted, and no timer is left, after stop()', async () =>
   ops.length = 0;
   answer({ ok: true, status: 200, json: async () => ({ username: 'viewerMe' }), text: async () => '' });
   await settle();
-  // A frame Pusher had already handed over, through the handler as it was.
+  // A frame the relay had already handed over, through the handler as it was.
   onmessage({ data: frameText('message-bob') });
   session.note('late');
   session.clearLocal();

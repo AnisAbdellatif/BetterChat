@@ -362,7 +362,7 @@
    * @param {object} opts.settings    a sanitized settings object (settings.js `sanitize`)
    * @param {object} opts.host        { fetch, WebSocket, setTimeout, clearTimeout, now }
    * @param {(ops: object[]) => void} opts.onOps   receives every batch of operations
-   * @param {object} [opts.config]    { kickApiBase, pusherAppKey, pusherCluster } (config.js)
+   * @param {object} [opts.config]    { kickApiBase, realtimeUrl } (config.js)
    * @param {boolean} [opts.overlay]  OBS overlay: no status lines, a screenful of history
    * @param {(name, data) => void} [opts.onUnknown]  Kick events nothing here recognises
    * @param {(error) => void} [opts.onError]  an exception thrown by onOps
@@ -1176,9 +1176,8 @@
       await refreshPinAndHistory(info.channel_id, true);
       if (stopped) return;
 
-      relay = new Kick.PusherRelay({
-        appKey: config.pusherAppKey,
-        cluster: config.pusherCluster,
+      relay = new Kick.FeedRelay({
+        url: config.realtimeUrl,
         chatroomId: info.chatroom_id,
         channelId: info.channel_id,
         WebSocket: HostSocket,

@@ -35,7 +35,7 @@
 <body>
 <main>
   <h1>Privacy Policy</h1>
-  <p class="updated">BetterChat &middot; last updated 28 September 2026</p>
+  <p class="updated">BetterChat &middot; last updated 13 October 2026</p>
 
   <p>This policy covers the BetterChat website at <code>betterchat.tech</code> and the
   &ldquo;KickPlus&rdquo; browser extension. Both are run by one independent
@@ -99,7 +99,9 @@
   <h2>What BetterChat sends to us</h2>
   <p>From the extension, only the live chart&rsquo;s requests to KickTracker described
   above, and only while the chart is on and set to read from KickTracker.</p>
-  <p>From the BetterChat page, nothing at all, unless you agree to the viewer count. You are asked once, on your
+  <p>From the BetterChat page opened on its own, the live chat comes through us (see
+  <a href="#relay">The live chat feed</a>). Apart from that, nothing at all, unless you
+  agree to the viewer count. You are asked once, on your
   first visit, and nothing is sent before you answer. Declining is a normal answer and
   the chat works exactly the same either way. You can change your mind at any time
   under <em>Overlay &amp; sharing</em> in the settings.</p>
@@ -121,12 +123,23 @@
   <p>Like any web request, ours arrive with your IP address attached. It is used to
   answer the request and is not stored with the count.</p>
 
+  <p id="relay"><strong>The live chat feed.</strong> Kick&rsquo;s live chat server only
+  accepts connections from kick.com itself, so a page on betterchat.tech cannot connect
+  to it. Opened on its own, the BetterChat page therefore connects to our server, which
+  holds the connection to Kick and passes the chat on as it arrives. That connection
+  tells our server which chat is being watched, for as long as it is open. It carries
+  nothing else: no id, nothing from your Kick account. The chat passing through is
+  public, is not stored, and is forgotten as soon as it is sent on. Inside the KickPlus
+  extension this does not happen: the extension connects to Kick from the kick.com tab
+  and hands the chat to the page itself, so nothing goes through us.</p>
+
   <h2>What your browser contacts directly</h2>
-  <p>BetterChat shows Kick chat by talking to Kick from your own browser, exactly as a
+  <p>BetterChat shows Kick chat by talking to Kick from your own browser, the way a
   kick.com tab does. Your browser connects directly to Kick to:</p>
   <ul>
     <li>look up the channel and its recent messages;</li>
-    <li>hold a live WebSocket connection to Kick&rsquo;s chat feed;</li>
+    <li>inside the KickPlus extension, hold a live connection to Kick&rsquo;s chat feed
+      from the kick.com tab;</li>
     <li>load emote images, badges and profile pictures.</li>
   </ul>
   <p>Those requests go to Kick, not through us. Kick receives them as it would any other
