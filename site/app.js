@@ -10,8 +10,9 @@ BetterChatSettings.ready.then(function () {
 
   const query = new URLSearchParams(location.search);
 
-  // The channel comes from the URL path: /xqc -> "xqc". Static hosts that
-  // can't rewrite paths can use /?c=xqc or /#xqc instead.
+  // The channel comes from the URL path: /somechannel -> "somechannel".
+  // Static hosts that can't rewrite paths can use /?c=somechannel or
+  // /#somechannel instead.
   const slug = (() => {
     const first = location.pathname.replace(/^\/+|\/+$/g, '').split('/')[0] || '';
     const fromPath = /\.html?$/i.test(first) ? '' : first;
@@ -2354,7 +2355,7 @@ BetterChatSettings.ready.then(function () {
     row.className = 'hint';
     row.append('Add a Kick channel name to the URL, e.g. ');
     const code = document.createElement('code');
-    code.textContent = `${location.origin}/xqc`;
+    code.textContent = `${location.origin}/somechannel`;
     row.appendChild(code);
     appendRow(row);
   }

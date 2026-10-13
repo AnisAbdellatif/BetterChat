@@ -343,7 +343,7 @@ def create_app(stats: Stats | None = None, sample_loop: bool = True, relay: Rela
     async def site_file(path: str) -> FileResponse:
         # Real files as-is, never cached for long (no build step means the
         # names never change); anything else is the chat page, which reads
-        # the channel from the URL (/xqc).
+        # the channel from the URL (/somechannel).
         candidate = (site / path).resolve() if path else index
         if candidate.is_file() and site in candidate.parents:
             return FileResponse(

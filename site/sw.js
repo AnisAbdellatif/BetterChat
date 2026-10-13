@@ -25,7 +25,7 @@
 const BUILD = '__BETTERCHAT_BUILD__';
 const CACHE = `betterchat-${BUILD}`;
 
-// The chat page is served for every unknown path (/xqc, /clix, ...) and
+// The chat page is served for every unknown path (/somechannel, /otherchannel, ...) and
 // reads its channel from location.pathname, so one copy under a fixed key
 // answers a navigation to any channel.
 const SHELL = '/';

@@ -58,7 +58,7 @@ session.start();
 
 | Option | Type | Required | Meaning |
 | --- | --- | --- | --- |
-| `slug` | string | yes (may be `''`) | the channel as the viewer typed it, e.g. `"xqc"`. An empty slug makes `start()` do nothing. |
+| `slug` | string | yes (may be `''`) | the channel as the viewer typed it, e.g. `"somechannel"`. An empty slug makes `start()` do nothing. |
 | `settings` | object | yes | a settings object returned by `BetterChatSettings.sanitize` (see [Settings](#settings)) |
 | `host` | object | yes | `{ fetch, WebSocket, setTimeout, clearTimeout, now }`, see [The host](#the-host) |
 | `onOps` | `(ops: Op[]) => void` | yes | receives every batch of operations |
@@ -377,7 +377,7 @@ The connection changed. `Status`:
 ### `channel`
 
 ```json
-{ "op": "channel", "channel": { "slug": "xqc", "channelId": 668, "chatroomId": 668, "live": false } }
+{ "op": "channel", "channel": { "slug": "somechannel", "channelId": 1001, "chatroomId": 1002, "live": false } }
 ```
 
 The channel was resolved. `slug` is the slug given to `createChatSession`,

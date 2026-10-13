@@ -1,7 +1,7 @@
 # BetterChat
 
 A customizable viewer for any Kick channel's chat. Open `/<channel>` (for
-example `/xqc`) and the page talks to Kick's REST API directly from the
+example `/somechannel`) and the page talks to Kick's REST API directly from the
 browser to resolve the channel and load its history. The live feed comes
 through this server: Kick's realtime server (Centrifugo) only takes
 connections from kick.com, so a small relay holds them and passes the frames
@@ -148,10 +148,10 @@ pyproject.toml, uv.lock, Dockerfile, docker-compose.yml, .env.example
   one. Nothing here is a setting - it is what makes a bug report nameable.
 
 **Settings in the URL.** Any setting can be a query parameter
-(`/xqc?fontSize=16&monocolor=1&hiddenBadges=level,event`). URL settings
+(`/somechannel?fontSize=16&monocolor=1&hiddenBadges=level,event`). URL settings
 override stored ones and are not saved.
 
-**OBS overlay mode.** `/xqc?overlay=1` is a transparent, control-free page
+**OBS overlay mode.** `/somechannel?overlay=1` is a transparent, control-free page
 whose messages fade out after the configured number of seconds.
 
 **Admin board.** `/admin`: viewers now, channels watched, messages seen,
@@ -312,7 +312,7 @@ Needs [uv](https://docs.astral.sh/uv/) (Python 3.12+ is fetched by uv).
 uv sync
 cp .env.example .env        # set ADMIN_USER / ADMIN_PASSWORD (loaded automatically)
 uv run betterchat
-# http://localhost:8010/xqc   and   http://localhost:8010/admin
+# http://localhost:8010/somechannel   and   http://localhost:8010/admin
 ```
 
 Tests:
@@ -356,8 +356,8 @@ here rather than to kick.com.
 
 Two things the embedding side owns:
 
-- **Channel changes.** kick.com is an SPA, so a viewer going from `/xqc` to
-  `/clix` never reloads. Point the iframe's `src` at the new channel; the
+- **Channel changes.** kick.com is an SPA, so a viewer going from `/somechannel` to
+  `/otherchannel` never reloads. Point the iframe's `src` at the new channel; the
   tab id lives in `sessionStorage` and survives, and a beat naming a
   different channel already ends the old session and starts a new one.
 - **Framing.** kick.com's own CSP decides whether the frame loads at all.
