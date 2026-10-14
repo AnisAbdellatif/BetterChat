@@ -54,7 +54,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "kicksdk-py", specifier = ">=0.1.1" },
+    { name = "kicksdk-py", specifier = ">=0.2.0,<0.3" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
     { name = "websockets", specifier = ">=14" },
 ]
@@ -198,18 +198,18 @@ wheels = [
 
 [[package]]
 name = "kicksdk-py"
-version = "0.1.1"
+version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ce/07/06a2bdf86807d75775b4178cde4869dec0ff78b84c79182bb297db1a95bd/kicksdk_py-0.1.1.tar.gz", hash = "sha256:ac0bd199317761a38495e776995dd31731be15d30085e9deb25d07669d834caf", size = 51992, upload-time = "2026-10-13T08:27:45.961Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/05/da/dde2535eee86734085e4cd12d7b8b33de976a435bfd4ad81093604e36172/kicksdk_py-0.2.0.tar.gz", hash = "sha256:37881fa057911bae76871863614107bad0a2a7586b48430449dd28d7284202c8", size = 94358, upload-time = "2026-10-14T11:42:27.954Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/82/d0/1976cf2739ad8c5127d02c46d2dc9f20f81e0b1fb8ea43927ffb1d62b419/kicksdk_py-0.1.1-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:4a3d25e006c6c7c0bf828d5178f759f0253b7a06f736458f5214c3720c95b99b", size = 448955, upload-time = "2026-10-13T08:27:34.055Z" },
-    { url = "https://files.pythonhosted.org/packages/ad/61/709728ee908b62a6a556145022f84168602aa8b62e3f11ad222f470e40b1/kicksdk_py-0.1.1-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:cfef81e0c6c3a70ca0df8dcb8e17a44ef498968794043689e0f38480d8af0ffb", size = 432414, upload-time = "2026-10-13T08:27:35.481Z" },
-    { url = "https://files.pythonhosted.org/packages/78/41/e2caa25bd2e068db2c25577327712040765f05ae48e39ebe6080effac46f/kicksdk_py-0.1.1-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:2de4fc422e5102554d0aa9010535f5578f6ecca79ea20001d9c2b935cc8a129a", size = 457656, upload-time = "2026-10-13T08:27:36.736Z" },
-    { url = "https://files.pythonhosted.org/packages/cc/6b/32e8459b0776debc920a15d4762da0c0a0d4ba4610b002d13a593c55e762/kicksdk_py-0.1.1-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:db9b3122470e3ee4091361c6ffdfcb1c4e78ad31a81a03bde8929a35de935406", size = 464634, upload-time = "2026-10-13T08:27:38.614Z" },
-    { url = "https://files.pythonhosted.org/packages/b6/21/40c7165ab6295e2439936a0ef40dd134f04a0a038fa430b4900aff837b50/kicksdk_py-0.1.1-cp39-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:ae6dd61267832c7d1bffa70354607a9d2945cde1e6a966ef3445956f4edeab43", size = 634646, upload-time = "2026-10-13T08:27:40.432Z" },
-    { url = "https://files.pythonhosted.org/packages/7d/2d/9e4fda1d7b4b24d73e19800cd4368e4e296089716165f761af99d83876b5/kicksdk_py-0.1.1-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:d1677ab9fcfff4829f9ca5f67f6133d1af8a7a955665f2d6f12f194bf339e8e0", size = 676724, upload-time = "2026-10-13T08:27:41.949Z" },
-    { url = "https://files.pythonhosted.org/packages/1b/e9/8ae83b3b956a7e21130b96f1db069d920e69405a2775f3236f4f7764b100/kicksdk_py-0.1.1-cp39-abi3-win_amd64.whl", hash = "sha256:efcf8a0bc90f8b2d0863ad3f6daaf25f2af20ccef33735cb6749376575fb8331", size = 346820, upload-time = "2026-10-13T08:27:43.281Z" },
-    { url = "https://files.pythonhosted.org/packages/d3/11/10dc06472ce0d355da92e6a5af27ce8904b65a046539ca95e6361406d506/kicksdk_py-0.1.1-cp39-abi3-win_arm64.whl", hash = "sha256:321927e4018af12e6ac7d0bc941763dad915d9e0c0bd5cef400f73c43960029c", size = 336400, upload-time = "2026-10-13T08:27:44.699Z" },
+    { url = "https://files.pythonhosted.org/packages/35/e7/e6a7b4da22cafcabd9f8439d70b5ba96f2a4afec902aeafabf49fb2f611b/kicksdk_py-0.2.0-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:6fc800824b7516c900acbd38b4696f7f138bf629691339f3abfb5eaed92c842c", size = 441370, upload-time = "2026-10-14T11:42:14.961Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/d4/f842062be9d0067cffa05513ec4c120e9ae26d39b8bc5fa1fb1351d5092c/kicksdk_py-0.2.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:2e8b1cebd88fa3d4c05d732ec7e963ef60805f9f3b83d7531203df26ac1eafaf", size = 426601, upload-time = "2026-10-14T11:42:16.626Z" },
+    { url = "https://files.pythonhosted.org/packages/fe/90/1951fd128aaea177b0947336074eb16d69ee37d4459ce6c7795a89cfb893/kicksdk_py-0.2.0-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:febc4a86b3f8d459dd9cbb670aa53bf6c0b5e4aa5a9b26219c0c5450a49fe55f", size = 435120, upload-time = "2026-10-14T11:42:18.144Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/58/82d9f2b63f5eb2d425b27f747b63defa8585544dc5a7657557921d9bffd2/kicksdk_py-0.2.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:dc8197a264d095637998813e7de137e9da9ea55829da8666e9a2c64f5c838900", size = 454131, upload-time = "2026-10-14T11:42:19.754Z" },
+    { url = "https://files.pythonhosted.org/packages/da/c4/829897d1138bd70ae2896c498f31401fe40e1317bc4742b179f448d07fd5/kicksdk_py-0.2.0-cp39-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:fc39cd43c7777204943d3859fb9c01f6cba96cdb6366b1b221e0740b55b92784", size = 612990, upload-time = "2026-10-14T11:42:21.287Z" },
+    { url = "https://files.pythonhosted.org/packages/c5/57/510d534387df68166de019441d3c5633e5a8c21acd7c3b2a8a239fa27eed/kicksdk_py-0.2.0-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:e5bf481f70f1d8ac4a2bc722716096dcdb8b774d8f1a8234000d83b6b13a3cbd", size = 666618, upload-time = "2026-10-14T11:42:23.181Z" },
+    { url = "https://files.pythonhosted.org/packages/05/42/699dd5d1142d617511248d7b328585c1d9cee958ec46d868b0a63f40bca3/kicksdk_py-0.2.0-cp39-abi3-win_amd64.whl", hash = "sha256:0595c340b12d93980d29103a24d35b1179f4e52f4a802ade59c1a3f76a88ecd7", size = 377338, upload-time = "2026-10-14T11:42:24.922Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/18/a57398baa24c8109ba0d49aa5896f6d1ce7caafb38811ccfed28014cfca3/kicksdk_py-0.2.0-cp39-abi3-win_arm64.whl", hash = "sha256:65d554cd5703d04149cbb9bc9bd15ae9a743d7cf51597880b5d33518db525f59", size = 366957, upload-time = "2026-10-14T11:42:26.593Z" },
 ]
 
 [[package]]
