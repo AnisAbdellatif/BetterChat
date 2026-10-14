@@ -250,7 +250,12 @@ the KickPlus extension's moderation and replies.
 - `betterchat/relay.py` - the chat relay: one Centrifugo connection per
   chatroom, opened with Kick's guest token and `Origin: https://kick.com`,
   shared by every viewer of it and kept 30 s after the last one leaves.
-  Tokens are refreshed before they expire (45 min). Capped by
+  Tokens are refreshed before they expire (45 min). It never gives up on
+  Kick while anyone reads the chat (kicksdk's rules, its KICK.md §6.1): a
+  drop is retried after 1 s doubling to 30 s; a terminal close (Kick
+  refusing this client - a ban, a limit, a refused token) waits 5, 10, 20,
+  then 30 minutes and comes back as a new guest client; the chat feed
+  subscribing starts both over. Waits are jittered. Capped by
   `RELAY_MAX_FEEDS` and `RELAY_MAX_CLIENTS`; `/health` reports both counts.
 - `betterchat/main.py` - serves `site/` (every unknown path is the chat
   page, real files as-is), takes heartbeats, serves the board, and answers
